@@ -1,0 +1,56 @@
+{
+  "name": "vscode-mesh-viewer",
+  "displayName": "vscode-mesh-viewer",
+  "description": "Preview 3D models within VSCode",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.17.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:extension.openMeshPreview"
+  ],
+  "main": "./out/src/extension",
+  "contributes": {
+    "commands": [
+      {
+        "command": "extension.openMeshPreview",
+        "title": "Open Mesh Preview"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourceLangId == 'obj'",
+          "command": "extension.openMeshPreview",
+          "group": "navigation"
+        }
+      ]
+    },
+  "languages": [{
+      "id": "obj",
+      "extensions": [ ".obj" ],
+      "aliases": [ "OBJ" ],
+      "mimetypes": [
+        "text/plain"
+      ],
+      "configuration": "./language-configuration.json"
+    }]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "postinstall": "node ./node_modules/vscode/bin/install",
+    "test": "npm run compile && node ./node_modules/vscode/bin/test"
+  },
+  "devDependencies": {
+    "typescript": "^2.5.2",
+    "vscode": "^1.1.5",
+    "mocha": "^3.5.0",
+    "@types/node": "^7.0.43",
+    "@types/mocha": "^2.2.42"
+  }
+}
