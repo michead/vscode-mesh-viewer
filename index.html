@@ -1,27 +1,27 @@
+<!DOCTYPE html>
 <html>
   <head>
-    <script src="ext/gl-matrix-min.js"></script>
-  </head>
-  <body>
-    <canvas id="mesh-preview-root" style="border:none;" width="100%" height="100%"></canvas>
-    <div id="mesh-preview-data" style="display:none;"></div>
-    <div id="vert-shader" style="display:none;">
+    <script type="text/javascript" src="file:///${path}/gl-matrix-min.js"></script>
+    <script id="mesh-preview-vert-shader" type="x-shader/x-vertex">
       attribute vec3 position;
-      
       uniform mat4 modelViewMat;
       uniform mat4 projMat;
-      
       void main(void) {
         gl_Position = projMat * modelViewMat * vec4(position, 1.0);
       }
-    </div>
-    <div id="frag-shader" style="display:none;">
+    </script>
+    <script id="mesh-preview-frag-shader" type="x-shader/x-fragment">
       precision mediump float;
-      
       void main(void) {
-        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        gl_FragColor = vec4(0, 0, 1, 1);
       }
+    </script>
+  </head>
+  <body>
+    <canvas id="mesh-preview-canvas" style="width:100%;height:100%"></canvas>
+    <div id="mesh-preview-obj" style="display:none;">
+      ${mesh}
     </div>
-    <script src='out/index.js'></script>
+    <script type="text/javascript" src="file:///${path}/index.js"></script>
   </body>
 </html>
