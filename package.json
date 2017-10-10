@@ -29,15 +29,21 @@
         }
       ]
     },
-  "languages": [{
-      "id": "obj",
-      "extensions": [ ".obj" ],
-      "aliases": [ "OBJ" ],
-      "mimetypes": [
-        "text/plain"
-      ],
-      "configuration": "./language-configuration.json"
-    }]
+    "languages": [
+      {
+        "id": "obj",
+        "extensions": [
+          ".obj"
+        ],
+        "aliases": [
+          "OBJ"
+        ],
+        "mimetypes": [
+          "text/plain"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -47,10 +53,10 @@
     "test": "npm run compile && node ./node_modules/vscode/bin/test"
   },
   "devDependencies": {
-    "typescript": "^2.5.2",
-    "vscode": "^1.1.5",
-    "mocha": "^3.5.0",
+    "@types/mocha": "^2.2.42",
     "@types/node": "^7.0.43",
-    "@types/mocha": "^2.2.42"
+    "mocha": "^3.5.0",
+    "typescript": "^2.5.2",
+    "vscode": "^1.1.5"
   }
 }
