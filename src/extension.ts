@@ -20,10 +20,11 @@ export function activate(context: vscode.ExtensionContext) {
 
         vscode.workspace.registerTextDocumentContentProvider('mesh-preview', {
           provideTextDocumentContent(uri: vscode.Uri, token: vscode.CancellationToken): string {
-            return fs.readFileSync(path.resolve(__dirname, 'index.html'))
+            return fs.readFileSync(path.resolve(__dirname, '../../index.html'))
               .toString('utf-8')
               .replace('${mesh}', data.toString('utf-8'))
-              .replace(/\${path}/g, __dirname);
+              .replace(/\${outPath}/g, __dirname)
+              .replace(/\${extPath}/g, path.resolve(__dirname, '../../ext'));
           }
         });
 

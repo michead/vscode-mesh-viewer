@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <script type="text/javascript" src="file:///${path}/gl-matrix-min.js"></script>
+    <script type="text/javascript" src="file:///${extPath}/gl-matrix-min.js"></script>
     <script id="mesh-preview-vert-shader" type="x-shader/x-vertex">
       attribute vec3 position;
-      uniform mat4 modelViewMat;
+      uniform mat4 modelMat;
+      uniform mat4 viewMat;
       uniform mat4 projMat;
       void main(void) {
-        gl_Position = projMat * modelViewMat * vec4(position, 1.0);
+        gl_Position = projMat * viewMat * modelMat * vec4(position, 1.0);
       }
     </script>
     <script id="mesh-preview-frag-shader" type="x-shader/x-fragment">
@@ -18,10 +19,10 @@
     </script>
   </head>
   <body>
-    <canvas id="mesh-preview-canvas" style="width:100%;height:100%"></canvas>
+    <canvas id="mesh-preview-canvas"></canvas>
     <div id="mesh-preview-obj" style="display:none;">
       ${mesh}
     </div>
-    <script type="text/javascript" src="file:///${path}/index.js"></script>
+    <script type="text/javascript" src="file:///${outPath}/index.js"></script>
   </body>
 </html>
