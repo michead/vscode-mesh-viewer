@@ -353,29 +353,33 @@ class Vec4 {
   }
 }
 
+class Material {
+  ka: Vec3 = new Vec3();
+  kd: Vec3 = new Vec3([0.64, 0.64, 0.64])
+  ks: Vec3 = new Vec3([0.00005, 0.00005, 0.00005]);
+}
+
 class Mesh {
   vertices: Vec3[];
   faces:    Vec3[];
+  material: Material;
+  get center() {
+    let center = new Vec3();
+    this.vertices.forEach((vertex) => {
+      center = center.add(vertex);
+    });
+    return center.mulScalar(1 / this.vertices.length); 
+  }
 }
 
 let gl: WebGLRenderingContext;
 let shaderProgram: WebGLProgram;
 let shaderProgramHud: WebGLProgram;
 let mesh: Mesh;
-let meshCenter = new Vec3();
 let meshVertexBuffer: WebGLBuffer;
 let meshIndexBuffer: WebGLBuffer;
 let gizmoVertexBuffer: WebGLBuffer;
 let gizmoIndexBuffer: WebGLBuffer;
-let modelMatUniform: WebGLUniformLocation;
-let viewMatUniform: WebGLUniformLocation;
-let projMatUniform: WebGLUniformLocation;
-let colorUniformHud: WebGLUniformLocation;
-let modelMatUniformHud: WebGLUniformLocation;
-let viewMatUniformHud: WebGLUniformLocation;
-let projMatUniformHud: WebGLUniformLocation;
-let positionAttributeLocation: number;
-let positionAttributeLocationHud: number;
 let lMouseBtnDown = false;
 let rMouseBtnDown = false;
 let cameraArmLen = 25;
@@ -395,6 +399,7 @@ const CAMERA_MAX_ARM_LEN = 50;
 const CAMERA_UP     = new Vec3([0, 1, 0]);
 const CAMERA_RIGHT  = new Vec3([1, 0, 0]);
 const CAMERA_TARGET = new Vec3();
+const CAMERA_LIGHT_OFFSET = new Vec3([-5, 2, 3]);
 
 function resizeCanvasCallback(evt: Event) {
   canvas.width  = window.innerWidth;
@@ -514,6 +519,8 @@ function initShaders(): void {
 }
 
 function parseMesh(): void {
+  mesh = new Mesh();
+
   const lines = objData.split('\n');
   const vertices = [];
   const faces    = [];
@@ -532,17 +539,9 @@ function parseMesh(): void {
     }
   }
 
-  mesh = {
-    vertices,
-    faces
-  };
-}
-
-function computeCenter() {
-  mesh.vertices.forEach((vertex) => {
-    meshCenter = meshCenter.add(vertex);
-  });
-  meshCenter = meshCenter.mulScalar(1 / mesh.vertices.length);
+  mesh.vertices = vertices;
+  mesh.faces    = faces;
+  mesh.material = new Material() // TODO: Should be parsed instead
 }
 
 function initBuffers() {
@@ -567,8 +566,6 @@ function initBuffers() {
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshIndexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW)
-  
-  positionAttributeLocation = gl.getAttribLocation(shaderProgram, "position");
 
   gizmoVertexBuffer = gl.createBuffer();
   gizmoIndexBuffer  = gl.createBuffer();
@@ -582,8 +579,6 @@ function initBuffers() {
 
   gl.bindBuffer(gl.ARRAY_BUFFER, gizmoVertexBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(gizmoVerts), gl.STATIC_DRAW);
-  
-  positionAttributeLocationHud = gl.getAttribLocation(shaderProgramHud, "position");
 }
 
 function updateCamera() {
@@ -599,24 +594,25 @@ function updateCamera() {
 }
 
 function updateUniforms() {
-  const modelMat = Mat4.translate(CAMERA_TARGET.sub(meshCenter)).toArray();
+  const modelMat = Mat4.translate(CAMERA_TARGET.sub(mesh.center)).toArray();
   const viewMat  = Mat4.lookAt(cameraPos, CAMERA_TARGET, CAMERA_UP).toArray();
   const projMat  = Mat4.perspective(45, canvas.width / canvas.height, 1, 100).toArray();
   const identity = Mat4.identity().toArray();
 
-  modelMatUniform = gl.getUniformLocation(shaderProgram, "modelMat");
-  viewMatUniform  = gl.getUniformLocation(shaderProgram, "viewMat");
-  projMatUniform  = gl.getUniformLocation(shaderProgram, "projMat");
+  const lightPosUniform = gl.getUniformLocation(shaderProgram, "lightPos");
+  const modelMatUniform = gl.getUniformLocation(shaderProgram, "modelMat");
+  const viewMatUniform  = gl.getUniformLocation(shaderProgram, "viewMat");
+  const projMatUniform  = gl.getUniformLocation(shaderProgram, "projMat");
 
   gl.useProgram(shaderProgram);
+  gl.uniform3fv(lightPosUniform, cameraPos.add(CAMERA_LIGHT_OFFSET).toArray());
   gl.uniformMatrix4fv(modelMatUniform, false, modelMat);
   gl.uniformMatrix4fv(viewMatUniform, false, viewMat);
   gl.uniformMatrix4fv(projMatUniform, false, projMat);
 
-  colorUniformHud    = gl.getUniformLocation(shaderProgramHud, "color");
-  modelMatUniformHud = gl.getUniformLocation(shaderProgramHud, "modelMat");
-  viewMatUniformHud  = gl.getUniformLocation(shaderProgramHud, "viewMat");
-  projMatUniformHud  = gl.getUniformLocation(shaderProgramHud, "projMat");
+  const modelMatUniformHud = gl.getUniformLocation(shaderProgramHud, "modelMat");
+  const viewMatUniformHud  = gl.getUniformLocation(shaderProgramHud, "viewMat");
+  const projMatUniformHud  = gl.getUniformLocation(shaderProgramHud, "projMat");
 
   gl.useProgram(shaderProgramHud);
   gl.uniformMatrix4fv(modelMatUniformHud, false, identity);
@@ -629,25 +625,30 @@ function drawGizmo() {
   gl.disable(gl.DEPTH_TEST);
   gl.lineWidth(3);
 
+    
+  const posAttrLocHud = gl.getAttribLocation(shaderProgramHud, "position");
+
   gl.bindBuffer(gl.ARRAY_BUFFER, gizmoVertexBuffer);
-  gl.enableVertexAttribArray(positionAttributeLocationHud);
+  gl.enableVertexAttribArray(posAttrLocHud);
+
+  const colorUniformHud = gl.getUniformLocation(shaderProgramHud, "color");
 
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gizmoIndexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1]), gl.STATIC_DRAW);
   gl.uniform4fv(colorUniformHud, [1, 0, 0, 1]);
-  gl.vertexAttribPointer(positionAttributeLocationHud, 3, gl.FLOAT, false, 0, 0);
+  gl.vertexAttribPointer(posAttrLocHud, 3, gl.FLOAT, false, 0, 0);
   gl.drawElements(gl.LINES, 2, gl.UNSIGNED_SHORT, 0);
 
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gizmoIndexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 2]), gl.STATIC_DRAW)
   gl.uniform4fv(colorUniformHud, [0, 1, 0, 1]);
-  gl.vertexAttribPointer(positionAttributeLocationHud, 3, gl.FLOAT, false, 0, 0);
+  gl.vertexAttribPointer(posAttrLocHud, 3, gl.FLOAT, false, 0, 0);
   gl.drawElements(gl.LINES, 2, gl.UNSIGNED_SHORT, 0);
 
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gizmoIndexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 3]), gl.STATIC_DRAW);
   gl.uniform4fv(colorUniformHud, [0, 0, 1, 1]);
-  gl.vertexAttribPointer(positionAttributeLocationHud, 3, gl.FLOAT, false, 0, 0);
+  gl.vertexAttribPointer(posAttrLocHud, 3, gl.FLOAT, false, 0, 0);
   gl.drawElements(gl.LINES, 2, gl.UNSIGNED_SHORT, 0);
 }
 
@@ -662,11 +663,13 @@ function draw() {
   updateCamera();
   updateUniforms();
 
+  const posAttrLoc = gl.getAttribLocation(shaderProgram, "position");
+
   gl.useProgram(shaderProgram);
   gl.bindBuffer(gl.ARRAY_BUFFER, meshVertexBuffer);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshIndexBuffer);
-  gl.enableVertexAttribArray(positionAttributeLocation);
-  gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(posAttrLoc);
+  gl.vertexAttribPointer(posAttrLoc, 3, gl.FLOAT, false, 0, 0);
 
   if (bWireframe) {
     for (let i = 0; i < mesh.faces.length; i++) {
@@ -684,6 +687,5 @@ function draw() {
 initGL();
 initShaders();
 parseMesh();
-computeCenter();
 initBuffers();
 draw();
