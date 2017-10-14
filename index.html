@@ -14,7 +14,23 @@
     <script id="mesh-preview-frag-shader" type="x-shader/x-fragment">
       precision mediump float;
       void main(void) {
-        gl_FragColor = vec4(0, 0, 1, 1);
+        gl_FragColor = vec4(0.5, 0.5, 0.5, 1);
+      }
+    </script>
+    <script id="mesh-preview-vert-shader-hud" type="x-shader/x-vertex">
+      attribute vec3 position;
+      uniform mat4 modelMat;
+      uniform mat4 viewMat;
+      uniform mat4 projMat;
+      void main(void) {
+        gl_Position = projMat * viewMat * modelMat * vec4(position, 1.0);
+      }
+    </script>
+    <script id="mesh-preview-frag-shader-hud" type="x-shader/x-fragment">
+      precision mediump float;
+      uniform vec4 color;
+      void main(void) {
+        gl_FragColor = color;
       }
     </script>
   </head>
