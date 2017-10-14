@@ -23,8 +23,7 @@ export function activate(context: vscode.ExtensionContext) {
             return fs.readFileSync(path.resolve(__dirname, '../../index.html'))
               .toString('utf-8')
               .replace('${mesh}', data.toString('utf-8'))
-              .replace(/\${outPath}/g, __dirname)
-              .replace(/\${extPath}/g, path.resolve(__dirname, '../../ext'));
+              .replace(/\${outPath}/g, __dirname);
           }
         });
 
