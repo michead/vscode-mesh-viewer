@@ -1,5 +1,6 @@
 const canvas  = document.getElementById('mesh-preview-canvas') as HTMLCanvasElement;
 const objData = document.getElementById('mesh-preview-obj').innerText;
+const mtlData = document.getElementById('mesh-preview-mtl').innerText;
 const vert    = document.getElementById('mesh-preview-vert-shader').innerText;
 const frag    = document.getElementById('mesh-preview-frag-shader').innerText;
 const vertHud = document.getElementById('mesh-preview-vert-shader-hud').innerText;
@@ -170,6 +171,15 @@ class Mat4 {
     return new Mat4(this.elements.map((e) => -e));
   }
 
+  transposed(): Mat4 {
+    return new Mat4([
+      this._00, this._10, this._20, this._30,
+      this._01, this._11, this._21, this._31,
+      this._02, this._12, this._22, this._32,
+      this._03, this._13, this._23, this._33
+    ]);
+  }
+
   toArray(): number[] {
     return this.elements;
   }
@@ -242,6 +252,10 @@ class Vec3 {
 
   length(): number {
     return Math.sqrt(this.lengthSqrd());
+  }
+
+  dist(b: Vec3): number {
+    return this.sub(b).length();
   }
 
   normalized(): Vec3 {
@@ -357,19 +371,16 @@ class Material {
   ka: Vec3 = new Vec3();
   kd: Vec3 = new Vec3([0.64, 0.64, 0.64])
   ks: Vec3 = new Vec3([0.00005, 0.00005, 0.00005]);
+  ns: number = 10;
 }
 
 class Mesh {
   vertices: Vec3[];
   faces:    Vec3[];
   material: Material;
-  get center() {
-    let center = new Vec3();
-    this.vertices.forEach((vertex) => {
-      center = center.add(vertex);
-    });
-    return center.mulScalar(1 / this.vertices.length); 
-  }
+  center:   Vec3;
+  radius: number;
+  normals:  Vec3[];
 }
 
 let gl: WebGLRenderingContext;
@@ -388,14 +399,16 @@ let deltaYaw   = 0;
 let deltaPitch = 0;
 let oldMouseX = 0;
 let oldMouseY = 0;
-let bGizmo     = false;
-let bWireframe = false;
+let bWireframe   = false;
+let bDrawGizmo   = false;
+let bDrawNormals = false;
+let gizmoLineLen  = 10;
+let normalLineLen = 1;
+let cameraMinArmLen = 2;
+let cameraMaxArmLen = 90;
 
 const EPSILON = 0.0001;
-const GIZMO_LINE_LEN = 10;
-const CAMERA_MOVEMENT_SPEED = 0.0075;
-const CAMERA_MIN_ARM_LEN = 5;
-const CAMERA_MAX_ARM_LEN = 50;
+const CAMERA_MOVEMENT_SPEED = 0.008;
 const CAMERA_UP     = new Vec3([0, 1, 0]);
 const CAMERA_RIGHT  = new Vec3([1, 0, 0]);
 const CAMERA_TARGET = new Vec3();
@@ -423,7 +436,11 @@ document.body.addEventListener('keypress', (evt: KeyboardEvent) => {
   switch (evt.keyCode) {
     case 71:  // g
     case 103: // G
-      bGizmo = !bGizmo;
+      bDrawGizmo = !bDrawGizmo;
+      break;
+    case 78:  // n
+    case 110: // N
+      bDrawNormals = !bDrawNormals;
       break;
     case 87:  // w
     case 119: // W
@@ -448,11 +465,11 @@ document.body.addEventListener('mousedown', (evt: MouseEvent) => {
 });
 
 document.body.addEventListener('mouseup', clearMouseInputCallback);
-document.body.addEventListener('mouseLeave', clearMouseInputCallback);
+document.body.addEventListener('mouseleave', clearMouseInputCallback);
 
 document.body.addEventListener('wheel', (evt: WheelEvent) => {
   cameraArmLen -= evt.wheelDelta * 0.001;
-  cameraArmLen = Math.max(Math.min(cameraArmLen, CAMERA_MAX_ARM_LEN), CAMERA_MIN_ARM_LEN);
+  cameraArmLen = Math.max(Math.min(cameraArmLen, cameraMaxArmLen), cameraMinArmLen);
   evt.preventDefault();
 });
 
@@ -541,17 +558,81 @@ function parseMesh(): void {
 
   mesh.vertices = vertices;
   mesh.faces    = faces;
-  mesh.material = new Material() // TODO: Should be parsed instead
+  mesh.material = ((): Material => {
+    const lines = mtlData.split('\n');
+    const material = new Material();
+    for (const line of lines) {
+      const [type, ...rest] = line.trim().split(' ');
+      switch (type) {
+        case 'ka':
+        case 'Ka':
+        material.ka = new Vec3(rest.map(n => parseFloat(n)));
+        break;
+        case 'kd':
+        case 'Kd':
+        material.kd = new Vec3(rest.map(n => parseFloat(n)));
+        break;
+        case 'ks':
+        case 'Ks':
+        material.ks = new Vec3(rest.map(n => parseFloat(n)));
+        break;
+        case 'ns':
+        case 'Ns':
+        material.ns = parseFloat(rest[0]);
+        break;
+      }
+      return material;
+    }
+  })();
+  mesh.center = ((): Vec3 => {
+    let center = new Vec3();
+    mesh.vertices.forEach((vertex) => {
+      center = center.add(vertex);
+    });
+    return center.mulScalar(1 / mesh.vertices.length);
+  })();
+  mesh.radius = ((): number => {
+    let radius = Number.MIN_VALUE;
+    for (const v of mesh.vertices) {
+      const dist = v.dist(mesh.center);
+      if (dist > radius) {
+        radius = dist;
+      }
+    }
+    return radius;
+  })();
+  mesh.normals = ((): Vec3[] => {
+    const normals = new Array(mesh.vertices.length).fill(void 0).map(() => new Vec3()) as Vec3[];
+    for (const face of mesh.faces) {
+      const a = mesh.vertices[face.y].sub(mesh.vertices[face.x]);
+      const b = mesh.vertices[face.y].sub(mesh.vertices[face.z]);
+      const faceNormal = b.cross(a).normalized();
+      normals[face.x] = normals[face.x].add(faceNormal);
+      normals[face.y] = normals[face.y].add(faceNormal);
+      normals[face.z] = normals[face.z].add(faceNormal);
+    }
+    return normals.map((n) => n.normalized());
+  })();
+
+  gizmoLineLen    = mesh.radius;
+  normalLineLen   = mesh.radius / 10;
+  cameraMinArmLen = Math.max(mesh.radius, 2);
+  cameraMaxArmLen = Math.max(mesh.radius * 10, 90);
 }
 
 function initBuffers() {
-  const vertices = [];
-  const indices  = [];
+  const attributes = [];
+  const indices    = [];
+  const normals    = mesh.normals;
 
-  mesh.vertices.forEach((vertex) => {
-    vertices.push(vertex.x);
-    vertices.push(vertex.y);
-    vertices.push(vertex.z);
+  mesh.vertices.forEach((vertex, i) => {
+    attributes.push(vertex.x);
+    attributes.push(vertex.y);
+    attributes.push(vertex.z);
+
+    attributes.push(normals[i].x);
+    attributes.push(normals[i].y);
+    attributes.push(normals[i].z);
   });
   mesh.faces.forEach((face) => {
     indices.push(face.x);
@@ -563,7 +644,7 @@ function initBuffers() {
   meshIndexBuffer  = gl.createBuffer();
   
   gl.bindBuffer(gl.ARRAY_BUFFER, meshVertexBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(attributes), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshIndexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW)
 
@@ -572,9 +653,9 @@ function initBuffers() {
 
   const gizmoVerts = [
     0,              0,              0,
-    GIZMO_LINE_LEN, 0,              0,
-    0,              GIZMO_LINE_LEN, 0,
-    0,              0,              GIZMO_LINE_LEN
+    gizmoLineLen, 0,              0,
+    0,              gizmoLineLen, 0,
+    0,              0,              gizmoLineLen
   ];
 
   gl.bindBuffer(gl.ARRAY_BUFFER, gizmoVertexBuffer);
@@ -594,30 +675,63 @@ function updateCamera() {
 }
 
 function updateUniforms() {
-  const modelMat = Mat4.translate(CAMERA_TARGET.sub(mesh.center)).toArray();
-  const viewMat  = Mat4.lookAt(cameraPos, CAMERA_TARGET, CAMERA_UP).toArray();
-  const projMat  = Mat4.perspective(45, canvas.width / canvas.height, 1, 100).toArray();
-  const identity = Mat4.identity().toArray();
+  const modelMat = Mat4.translate(CAMERA_TARGET.sub(mesh.center));
+  const viewMat  = Mat4.lookAt(cameraPos, CAMERA_TARGET, CAMERA_UP);
+  const projMat  = Mat4.perspective(45, canvas.width / canvas.height, 1, 100);
+  const identity = Mat4.identity();
 
-  const lightPosUniform = gl.getUniformLocation(shaderProgram, "lightPos");
-  const modelMatUniform = gl.getUniformLocation(shaderProgram, "modelMat");
-  const viewMatUniform  = gl.getUniformLocation(shaderProgram, "viewMat");
-  const projMatUniform  = gl.getUniformLocation(shaderProgram, "projMat");
+  const kaUniform        = gl.getUniformLocation(shaderProgram, "ka");
+  const kdUniform        = gl.getUniformLocation(shaderProgram, "kd");
+  const ksUniform        = gl.getUniformLocation(shaderProgram, "ks");
+  const nsUniform        = gl.getUniformLocation(shaderProgram, "ns");
+  const lightPosUniform  = gl.getUniformLocation(shaderProgram, "lightPos");
+  const modelMatUniform  = gl.getUniformLocation(shaderProgram, "modelMat");
+  const viewMatUniform   = gl.getUniformLocation(shaderProgram, "viewMat");
+  const projMatUniform   = gl.getUniformLocation(shaderProgram, "projMat");
 
   gl.useProgram(shaderProgram);
   gl.uniform3fv(lightPosUniform, cameraPos.add(CAMERA_LIGHT_OFFSET).toArray());
-  gl.uniformMatrix4fv(modelMatUniform, false, modelMat);
-  gl.uniformMatrix4fv(viewMatUniform, false, viewMat);
-  gl.uniformMatrix4fv(projMatUniform, false, projMat);
+  gl.uniform3fv(kaUniform, mesh.material.ka.toArray());
+  gl.uniform3fv(kdUniform, mesh.material.kd.toArray());
+  gl.uniform3fv(ksUniform, mesh.material.ks.toArray());
+  gl.uniform1f(nsUniform, mesh.material.ns);
+  gl.uniformMatrix4fv(modelMatUniform, false, modelMat.toArray());
+  gl.uniformMatrix4fv(viewMatUniform, false, viewMat.toArray());
+  gl.uniformMatrix4fv(projMatUniform, false, projMat.toArray());
 
   const modelMatUniformHud = gl.getUniformLocation(shaderProgramHud, "modelMat");
   const viewMatUniformHud  = gl.getUniformLocation(shaderProgramHud, "viewMat");
   const projMatUniformHud  = gl.getUniformLocation(shaderProgramHud, "projMat");
 
   gl.useProgram(shaderProgramHud);
-  gl.uniformMatrix4fv(modelMatUniformHud, false, identity);
-  gl.uniformMatrix4fv(viewMatUniformHud, false, viewMat);
-  gl.uniformMatrix4fv(projMatUniformHud, false, projMat);
+  gl.uniformMatrix4fv(modelMatUniformHud, false, identity.toArray());
+  gl.uniformMatrix4fv(viewMatUniformHud, false, viewMat.toArray());
+  gl.uniformMatrix4fv(projMatUniformHud, false, projMat.toArray());
+}
+
+function drawNormals() {
+  gl.useProgram(shaderProgramHud);
+  gl.lineWidth(1);
+
+  const posAttrLocHud = gl.getAttribLocation(shaderProgramHud, "position");
+  const colorUniformHud = gl.getUniformLocation(shaderProgramHud, "color");
+  const translationMatrix = Mat4.translate(CAMERA_TARGET.sub(mesh.center)).toArray();
+  gl.uniform4fv(colorUniformHud, [0, 0, 1, 1]);
+  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramHud, "modelMat"), false, translationMatrix);
+
+  const vertexBuffer = gl.createBuffer();
+  const translationVec = CAMERA_TARGET.sub(mesh.center);
+
+  mesh.vertices.forEach((v, i) => {
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      ...v.toArray(),
+      ...v.add(mesh.normals[i].mulScalar(normalLineLen)).toArray()
+    ]), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(posAttrLocHud, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(posAttrLocHud);
+    gl.drawArrays(gl.LINES, 0, 2);
+  });
 }
 
 function drawGizmo() {
@@ -625,7 +739,6 @@ function drawGizmo() {
   gl.disable(gl.DEPTH_TEST);
   gl.lineWidth(3);
 
-    
   const posAttrLocHud = gl.getAttribLocation(shaderProgramHud, "position");
 
   gl.bindBuffer(gl.ARRAY_BUFFER, gizmoVertexBuffer);
@@ -652,6 +765,18 @@ function drawGizmo() {
   gl.drawElements(gl.LINES, 2, gl.UNSIGNED_SHORT, 0);
 }
 
+function drawWireframe() {
+  gl.useProgram(shaderProgramHud);
+  
+  const modelMat = Mat4.translate(CAMERA_TARGET.sub(mesh.center)).toArray();
+  gl.uniform4fv(gl.getUniformLocation(shaderProgramHud, "color"), [1, 1, 1, 1]);
+  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramHud, "modelMat"), false, modelMat);
+  
+  for (let i = 0; i < mesh.faces.length; i++) {
+    gl.drawElements(gl.LINE_LOOP, 3, gl.UNSIGNED_SHORT, 3 * i);
+  }
+}
+
 function draw() {
   requestAnimationFrame(draw);
  
@@ -663,23 +788,29 @@ function draw() {
   updateCamera();
   updateUniforms();
 
-  const posAttrLoc = gl.getAttribLocation(shaderProgram, "position");
+  const posAttrLoc    = gl.getAttribLocation(shaderProgram, "position");
+  const normalAttrLoc = gl.getAttribLocation(shaderProgram, "normal");
+
+  gl.enableVertexAttribArray(posAttrLoc);
+  gl.enableVertexAttribArray(normalAttrLoc);
 
   gl.useProgram(shaderProgram);
-  gl.bindBuffer(gl.ARRAY_BUFFER, meshVertexBuffer);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshIndexBuffer);
-  gl.enableVertexAttribArray(posAttrLoc);
-  gl.vertexAttribPointer(posAttrLoc, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, meshVertexBuffer);
+  gl.vertexAttribPointer(posAttrLoc, 3, gl.FLOAT, false, 24, 0);
+  gl.vertexAttribPointer(normalAttrLoc, 3, gl.FLOAT, false, 24, 12);
 
   if (bWireframe) {
-    for (let i = 0; i < mesh.faces.length; i++) {
-      gl.drawElements(gl.LINE_LOOP, 3, gl.UNSIGNED_SHORT, 3 * i);
-    }
+    drawWireframe();
   } else {
     gl.drawElements(gl.TRIANGLES, mesh.faces.length * 3, gl.UNSIGNED_SHORT, 0);
   }
+
+  if (bDrawNormals) {
+    drawNormals();
+  }
   
-  if (bGizmo) {
+  if (bDrawGizmo) {
     drawGizmo();
   }
 }
