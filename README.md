@@ -2,6 +2,8 @@
 
 #### Preview .OBJ meshes within the Editor!
 
+![Demo](docs/demo.png)
+
 ## Features
 
 Right-click on an .OBJ file in the Explorer and select `Open Mesh Preview` -> a new tab will open showing your mesh rendered in an HTML5 canvas!
