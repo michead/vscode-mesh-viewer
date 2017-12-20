@@ -6,11 +6,12 @@
     "name": "Simone Riccardelli",
     "url": "https://github.com/michead"
   },
-  "publisher": "",
+  "publisher": "michead",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.17.0"
   },
+  "preview": true,
   "categories": [
     "Other"
   ],
