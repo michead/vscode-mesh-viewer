@@ -12,6 +12,10 @@
     "vscode": "^1.17.0"
   },
   "preview": true,
+  "icon": "docs/icon.png",
+  "galleryBanner": {
+    "theme": "dark"
+  },
   "categories": [
     "Other"
   ],
