@@ -555,8 +555,11 @@ function parseMesh(): void {
       vertices.push(new Vec3([x, y, z]));
       break;
       case 'f':
-      const [a, b, c] = rest.map(n => parseInt(n) - 1);
-      faces.push(new Vec3([a, b, c]))
+      const [a, b, c, d] = rest.map(n => parseInt(n) - 1);
+      faces.push(new Vec3([a, b, c]));
+      if (d) {
+        faces.push(new Vec3([a, c, d]));
+      }
       break;
     }
   }
