@@ -1,5 +1,8 @@
 # Change Log
 
+## [0.0.5]
+- Fix error occurring when loading .OBJ meshes with texture coordinates and/or normal indices specified in faces 
+
 ## [0.0.4]
 - Add support for quads
 
