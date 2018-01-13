@@ -3,48 +3,91 @@ import fs = require('fs');
 import path = require('path');
 
 const DEFAULT_MATERIAL = {
-  Ka: [0, 0, 0],
-  Kd: [0.5, 0.5, 0.5],
-  Ks: [0.005, 0.005, 0.005],
-  Ns: 10
+  __default__: {
+    Ka: [0, 0, 0],
+    Kd: [0.5, 0.5, 0.5],
+    Ks: [0.005, 0.005, 0.005],
+    Ns: 10
+  }
 };
 
-function materialObjToMtl(obj) {
-  let str = '';
-  for (const k in obj) {
-    if (obj.hasOwnProperty(k)) {
-      if (Array.isArray(obj[k])) {
-        str = str.concat(`${k} ${obj[k].join(' ')}`);
-      } else {
-        str = str.concat(`${k} ${obj[k]}`);
+function parseMaterial(materials, mtl) {
+  const materialName = mtl[0].trim().split(' ')[1];
+  let material = {};
+  let i = 1;
+  while ( i < mtl.length && !/^newmtl/.test(mtl[i].trim())) {
+    const [...tokens] = mtl[i].split(' ');
+    if (tokens.length > 1) {
+      switch (tokens[0]) {
+        case 'Ka':
+        case 'Kd':
+        case 'Ks':
+          material = {
+            ...material,
+            [tokens[0]]: [
+              parseFloat(tokens[1]),
+              parseFloat(tokens[2]),
+              parseFloat(tokens[3])
+            ]
+          };
+          break;
+        case 'Ns':
+          material = {
+            ...material,
+            [tokens[0]]: parseFloat(tokens[1])
+          };
+          break;
+        default:
+          // Attribute unrecongnized or currently not supported
+          break;
       }
     }
+    i++;
   }
-  return str;
+  materials[materialName] = material;
+  return i;
+}
+
+function mtlToMaterialObj(mtl) {
+  const materials = {};
+  const lines = mtl.split('\n');
+  for (let i = 0; i < lines.length;) {
+    while (!/^newmtl/.test(lines[i].trim())) {
+      i++;
+    }
+    i += parseMaterial(materials, lines.splice(i));
+  }
+  return materials;
 }
 
 export function activate(context: vscode.ExtensionContext) {
     const disposable = vscode.commands.registerCommand('extension.openMeshPreview', (selectedItem) => {
       const fsPath = selectedItem.fsPath as string;
       const previewUri = vscode.Uri.parse(`mesh-preview://${fsPath}`);
-      
-      if (!fs.existsSync(fsPath)) {
-        console.error('Cannot open .obj file.');
-        return;
-      }
 
-      let mtl;
-      const mtlPath = fsPath.replace(/.obj$/i, '.mtl');
-      if (fs.existsSync(mtlPath)) {
-        mtl = fs.readFileSync(mtlPath);
-      } else {
-        mtl = materialObjToMtl(DEFAULT_MATERIAL);
+      if (!fs.existsSync(fsPath)) {
+        vscode.window.showErrorMessage('Cannot open .obj file.');
+        return;
       }
 
       fs.readFile(fsPath, (err, data) => {
         if (err) {
-          console.error('Error encountered while reading .obj file: ', err);
+          vscode.window.showErrorMessage(`Error encountered while reading .obj file: ${err.message}`);
           return;
+        }
+
+        const materials = {};
+        Object.assign(materials, DEFAULT_MATERIAL);
+
+        const lines = data.toString('utf-8').split('\n');
+        for (const l of lines) {
+          const line = l.trim();
+          if (/^mtllib/.test(line)) {
+            const mtlPath = path.resolve(path.dirname(fsPath), line.split(' ')[1]);
+            if (fs.existsSync(mtlPath)) {
+              Object.assign(materials, mtlToMaterialObj(fs.readFileSync(mtlPath).toString('utf-8')));
+            }
+          }
         }
 
         vscode.workspace.registerTextDocumentContentProvider('mesh-preview', {
@@ -52,7 +95,7 @@ export function activate(context: vscode.ExtensionContext) {
             return fs.readFileSync(path.resolve(__dirname, '../../index.html'))
               .toString('utf-8')
               .replace('${mesh}', data.toString('utf-8'))
-              .replace('${material}', mtl.toString('utf-8'))
+              .replace('${material}', JSON.stringify(materials))
               .replace(/\${outPath}/g, __dirname);
           }
         });
@@ -61,15 +104,15 @@ export function activate(context: vscode.ExtensionContext) {
           allowScripts: true,
           allowSvgs: true
         })
-          .then((success) => {
-          }, (reason) => {
-            vscode.window.showErrorMessage(reason);
-          });
+        // tslint:disable-next-line:no-empty
+        .then(() => {}, (reason) => {
+          vscode.window.showErrorMessage(reason);
+        });
       });
     });
 
     context.subscriptions.push(disposable);
 }
 
-export function deactivate() {
-}
+// tslint:disable-next-line:no-empty
+export function deactivate() {}

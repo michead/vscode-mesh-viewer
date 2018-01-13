@@ -6,13 +6,13 @@ const frag    = document.getElementById('mesh-preview-frag-shader').innerText;
 const vertHud = document.getElementById('mesh-preview-vert-shader-hud').innerText;
 const fragHud = document.getElementById('mesh-preview-frag-shader-hud').innerText;
 
-function degToRad(angle:number) {
+function degToRad(angle: number) {
   return angle * Math.PI / 180;
 }
 
 class Mat4 {
   private elements: number[];
-  
+
   constructor(elements: number[] = [1, 0, 0, 0,
                                     0, 1, 0, 0,
                                     0, 0, 1, 0,
@@ -83,7 +83,7 @@ class Mat4 {
   get _33() {
     return this.elements[15];
   }
-  
+
   mulMat(b: Mat4): Mat4 {
     const a = this;
     return new Mat4([
@@ -367,20 +367,34 @@ class Vec4 {
   }
 }
 
+type Materials = {
+  [m: string]: Material;
+};
+
 class Material {
   ka: Vec3 = new Vec3();
-  kd: Vec3 = new Vec3([0.64, 0.64, 0.64])
+  kd: Vec3 = new Vec3([0.64, 0.64, 0.64]);
   ks: Vec3 = new Vec3([0.00005, 0.00005, 0.00005]);
   ns: number = 10;
 }
 
+type MeshGroup = {
+  faces: Vec3[];
+  material: string,
+  indexBuffer: WebGLBuffer;
+};
+
+type MeshObject = {
+  [g: string]: MeshGroup;
+};
+
 class Mesh {
   vertices: Vec3[];
   faces: Vec3[];
-  material: Material;
   center: Vec3;
   radius: number;
   normals: Vec3[];
+  objects: { [o: string]: MeshObject };
 }
 
 let gl: WebGLRenderingContext;
@@ -388,7 +402,6 @@ let shaderProgram: WebGLProgram;
 let shaderProgramHud: WebGLProgram;
 let mesh: Mesh;
 let meshVertexBuffer: WebGLBuffer;
-let meshIndexBuffer: WebGLBuffer;
 let gizmoVertexBuffer: WebGLBuffer;
 let gizmoIndexBuffer: WebGLBuffer;
 let lMouseBtnDown = false;
@@ -409,6 +422,8 @@ let bDrawGizmo   = false;
 let bDrawNormals = false;
 let gizmoLineLen  = 10;
 let normalLineLen = 1;
+
+const materials: Materials = {};
 
 const CAMERA_MOVEMENT_SPEED = 0.008;
 const CAMERA_TARGET = new Vec3();
@@ -486,7 +501,7 @@ document.body.addEventListener('mousemove', (evt: MouseEvent) => {
     deltaYaw   = -(evt.clientX - oldMouseX) * CAMERA_MOVEMENT_SPEED;
     deltaPitch = -(evt.clientY - oldMouseY) * CAMERA_MOVEMENT_SPEED;
   }
-  
+
   oldMouseX = evt.clientX;
   oldMouseY = evt.clientY;
 });
@@ -503,7 +518,7 @@ function initShaders(): void {
   gl.shaderSource(vertShader, vert);
   gl.shaderSource(fragShader, frag);
 
-  [vertShader, fragShader].forEach(shader => {
+  [vertShader, fragShader].forEach((shader) => {
     gl.compileShader(shader);
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
       throw new Error(`Error encountered while compiling shader: ${gl.getShaderInfoLog(shader)}`);
@@ -524,7 +539,7 @@ function initShaders(): void {
   gl.shaderSource(vertShaderHud, vertHud);
   gl.shaderSource(fragShaderHud, fragHud);
 
-  [vertShaderHud, fragShaderHud].forEach(shader => {
+  [vertShaderHud, fragShaderHud].forEach((shader) => {
     gl.compileShader(shader);
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
       throw new Error(`Error encountered while compiling shader: ${gl.getShaderInfoLog(shader)}`);
@@ -540,62 +555,107 @@ function initShaders(): void {
   }
 }
 
+function parseMaterials(): void {
+  const materialObj = JSON.parse(mtlData);
+  for (const m in materialObj) {
+    if (materialObj.hasOwnProperty(m)) {
+      const mtl = materialObj[m];
+      const material = new Material();
+      for (const prop in mtl) {
+        if (mtl.hasOwnProperty(prop)) {
+          switch (prop) {
+            case 'Ka':
+            case 'Kd':
+            case 'Ks':
+              material[prop] = new Vec3(mtl[prop].map((n) => parseFloat(n)));
+              break;
+            case 'Ns':
+              material[prop] = parseFloat(mtl[prop]);
+              break;
+            default:
+              break;
+          }
+          materials[m] = material;
+        }
+      }
+    }
+  }
+}
+
 function parseMesh(): void {
   mesh = new Mesh();
 
   const lines = objData.split('\n');
   const vertices = [];
   const faces    = [];
+  const objects  = {};
+  let lastObject = '__default__';
+  let lastGroup  = '__default__';
+  objects[lastObject] = {};
+  objects[lastObject][lastGroup] = {};
+  objects[lastObject][lastGroup].faces = [];
+  objects[lastObject][lastGroup].material = '__default__';
 
   for (const line of lines) {
     const [type, ...rest] = line.trim().split(' ');
     switch (type) {
       case 'v':
-      const [x, y, z] = rest.map(n => parseFloat(n));
-      vertices.push(new Vec3([x, y, z]));
-      break;
+        const [x, y, z] = rest.map((n) => parseFloat(n));
+        vertices.push(new Vec3([x, y, z]));
+        break;
       case 'f':
-      const [a, b, c, d] = rest.map(n => {
-        return n.indexOf('/') < 0
-          ? parseInt(n) - 1
-          : parseInt(n.substr(0, n.indexOf('/'))) - 1
-      });
-      faces.push(new Vec3([a, b, c]));
-      if (d) {
-        faces.push(new Vec3([a, c, d]));
-      }
-      break;
+        const [a, b, c, d] = rest.map((n) => {
+          return n.indexOf('/') < 0
+            ? parseInt(n) - 1
+            : parseInt(n.substr(0, n.indexOf('/'))) - 1;
+        });
+        faces.push(new Vec3([a, b, c]));
+        objects[lastObject][lastGroup].faces.push(new Vec3([a, b, c]));
+        if (d) {
+          faces.push(new Vec3([a, c, d]));
+          objects[lastObject][lastGroup].faces.push(new Vec3([a, c, d]));
+        }
+        break;
+      case 'usemtl':
+        objects[lastObject][lastGroup].material = rest[0];
+        break;
+      case 'o':
+        lastObject = rest[0];
+        lastGroup = '__default__';
+        if (!objects[lastObject]) {
+          objects[lastObject] = {};
+        }
+        if (!objects[lastObject][lastGroup]) {
+          objects[lastObject][lastGroup] = {};
+        }
+        if (!objects[lastObject][lastGroup].faces) {
+          objects[lastObject][lastGroup].faces = [];
+        }
+        if (!objects[lastObject][lastGroup].material) {
+          objects[lastObject][lastGroup].material = '__default__';
+        }
+        break;
+      case 'g':
+        lastGroup = rest[0];
+        if (!objects[lastObject][lastGroup]) {
+          objects[lastObject][lastGroup] = {};
+        }
+        if (!objects[lastObject][lastGroup].faces) {
+          objects[lastObject][lastGroup].faces = [];
+        }
+        if (!objects[lastObject][lastGroup].material) {
+          objects[lastObject][lastGroup].material = '__default__';
+        }
+        break;
+      default:
+        break;
     }
   }
 
   mesh.vertices = vertices;
-  mesh.faces    = faces;
-  mesh.material = ((): Material => {
-    const lines = mtlData.split('\n');
-    const material = new Material();
-    for (const line of lines) {
-      const [type, ...rest] = line.trim().split(' ');
-      switch (type) {
-        case 'ka':
-        case 'Ka':
-        material.ka = new Vec3(rest.map(n => parseFloat(n)));
-        break;
-        case 'kd':
-        case 'Kd':
-        material.kd = new Vec3(rest.map(n => parseFloat(n)));
-        break;
-        case 'ks':
-        case 'Ks':
-        material.ks = new Vec3(rest.map(n => parseFloat(n)));
-        break;
-        case 'ns':
-        case 'Ns':
-        material.ns = parseFloat(rest[0]);
-        break;
-      }
-      return material;
-    }
-  })();
+  mesh.objects  = objects;
+  mesh.faces = faces;
+
   mesh.center = ((): Vec3 => {
     let center = new Vec3();
     mesh.vertices.forEach((vertex) => {
@@ -637,8 +697,29 @@ function parseMesh(): void {
 
 function initBuffers() {
   const attributes = [];
-  const indices    = [];
-  const normals    = mesh.normals;
+  const normals = mesh.normals;
+
+  for (const o in mesh.objects) {
+    if (mesh.objects.hasOwnProperty(o)) {
+      for (const g in mesh.objects[o]) {
+        if (mesh.objects[o].hasOwnProperty(g)) {
+          const group = mesh.objects[o][g];
+          const indices = [];
+
+          group.faces.forEach((face) => {
+            indices.push(face.x);
+            indices.push(face.y);
+            indices.push(face.z);
+          });
+
+          group.indexBuffer  = gl.createBuffer();
+
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, group.indexBuffer);
+          gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+        }
+      }
+    }
+  }
 
   mesh.vertices.forEach((vertex, i) => {
     attributes.push(vertex.x);
@@ -649,19 +730,11 @@ function initBuffers() {
     attributes.push(normals[i].y);
     attributes.push(normals[i].z);
   });
-  mesh.faces.forEach((face) => {
-    indices.push(face.x);
-    indices.push(face.y);
-    indices.push(face.z);
-  });
-  
+
   meshVertexBuffer = gl.createBuffer();
-  meshIndexBuffer  = gl.createBuffer();
-  
+
   gl.bindBuffer(gl.ARRAY_BUFFER, meshVertexBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(attributes), gl.STATIC_DRAW);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshIndexBuffer);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW)
 
   gizmoVertexBuffer = gl.createBuffer();
   gizmoIndexBuffer  = gl.createBuffer();
@@ -686,34 +759,41 @@ function updateCamera() {
   deltaPitch = 0;
 }
 
+function bindMaterial(materialName) {
+  const kaUniform = gl.getUniformLocation(shaderProgram, 'ka');
+  const kdUniform = gl.getUniformLocation(shaderProgram, 'kd');
+  const ksUniform = gl.getUniformLocation(shaderProgram, 'ks');
+  const nsUniform = gl.getUniformLocation(shaderProgram, 'ns');
+
+  gl.useProgram(shaderProgram);
+
+  gl.uniform3fv(kaUniform, materials[materialName].ka.toArray());
+  gl.uniform3fv(kdUniform, materials[materialName].kd.toArray());
+  gl.uniform3fv(ksUniform, materials[materialName].ks.toArray());
+  gl.uniform1f(nsUniform, materials[materialName].ns);
+}
+
 function updateUniforms() {
   const modelMat = Mat4.translate(CAMERA_TARGET.sub(mesh.center));
   const viewMat  = Mat4.lookAt(cameraPos, CAMERA_TARGET, cameraUp);
   const projMat  = Mat4.perspective(45, canvas.width / canvas.height, 1, 1000);
   const identity = Mat4.identity();
 
-  const kaUniform        = gl.getUniformLocation(shaderProgram, "ka");
-  const kdUniform        = gl.getUniformLocation(shaderProgram, "kd");
-  const ksUniform        = gl.getUniformLocation(shaderProgram, "ks");
-  const nsUniform        = gl.getUniformLocation(shaderProgram, "ns");
-  const lightPosUniform  = gl.getUniformLocation(shaderProgram, "lightPos");
-  const modelMatUniform  = gl.getUniformLocation(shaderProgram, "modelMat");
-  const viewMatUniform   = gl.getUniformLocation(shaderProgram, "viewMat");
-  const projMatUniform   = gl.getUniformLocation(shaderProgram, "projMat");
+  const lightPosUniform  = gl.getUniformLocation(shaderProgram, 'lightPos');
+  const modelMatUniform  = gl.getUniformLocation(shaderProgram, 'modelMat');
+  const viewMatUniform   = gl.getUniformLocation(shaderProgram, 'viewMat');
+  const projMatUniform   = gl.getUniformLocation(shaderProgram, 'projMat');
 
   gl.useProgram(shaderProgram);
+
   gl.uniform3fv(lightPosUniform, lightPos.toArray());
-  gl.uniform3fv(kaUniform, mesh.material.ka.toArray());
-  gl.uniform3fv(kdUniform, mesh.material.kd.toArray());
-  gl.uniform3fv(ksUniform, mesh.material.ks.toArray());
-  gl.uniform1f(nsUniform, mesh.material.ns);
   gl.uniformMatrix4fv(modelMatUniform, false, modelMat.toArray());
   gl.uniformMatrix4fv(viewMatUniform, false, viewMat.toArray());
   gl.uniformMatrix4fv(projMatUniform, false, projMat.toArray());
 
-  const modelMatUniformHud = gl.getUniformLocation(shaderProgramHud, "modelMat");
-  const viewMatUniformHud  = gl.getUniformLocation(shaderProgramHud, "viewMat");
-  const projMatUniformHud  = gl.getUniformLocation(shaderProgramHud, "projMat");
+  const modelMatUniformHud = gl.getUniformLocation(shaderProgramHud, 'modelMat');
+  const viewMatUniformHud  = gl.getUniformLocation(shaderProgramHud, 'viewMat');
+  const projMatUniformHud  = gl.getUniformLocation(shaderProgramHud, 'projMat');
 
   gl.useProgram(shaderProgramHud);
   gl.uniformMatrix4fv(modelMatUniformHud, false, identity.toArray());
@@ -725,11 +805,11 @@ function drawNormals() {
   gl.useProgram(shaderProgramHud);
   gl.lineWidth(1);
 
-  const posAttrLocHud = gl.getAttribLocation(shaderProgramHud, "position");
-  const colorUniformHud = gl.getUniformLocation(shaderProgramHud, "color");
+  const posAttrLocHud = gl.getAttribLocation(shaderProgramHud, 'position');
+  const colorUniformHud = gl.getUniformLocation(shaderProgramHud, 'color');
   const translationMatrix = Mat4.translate(CAMERA_TARGET.sub(mesh.center)).toArray();
   gl.uniform4fv(colorUniformHud, [0, 0, 1, 1]);
-  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramHud, "modelMat"), false, translationMatrix);
+  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramHud, 'modelMat'), false, translationMatrix);
 
   const vertexBuffer = gl.createBuffer();
   const translationVec = CAMERA_TARGET.sub(mesh.center);
@@ -751,8 +831,8 @@ function drawGizmo() {
   gl.disable(gl.DEPTH_TEST);
   gl.lineWidth(3);
 
-  const posAttrLocHud   = gl.getAttribLocation(shaderProgramHud, "position");
-  const colorUniformHud = gl.getUniformLocation(shaderProgramHud, "color");
+  const posAttrLocHud   = gl.getAttribLocation(shaderProgramHud, 'position');
+  const colorUniformHud = gl.getUniformLocation(shaderProgramHud, 'color');
 
   gl.bindBuffer(gl.ARRAY_BUFFER, gizmoVertexBuffer);
   gl.enableVertexAttribArray(posAttrLocHud);
@@ -764,7 +844,7 @@ function drawGizmo() {
   gl.drawElements(gl.LINES, 2, gl.UNSIGNED_SHORT, 0);
 
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gizmoIndexBuffer);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 2]), gl.STATIC_DRAW)
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 2]), gl.STATIC_DRAW);
   gl.uniform4fv(colorUniformHud, [0, 1, 0, 1]);
   gl.vertexAttribPointer(posAttrLocHud, 3, gl.FLOAT, false, 0, 0);
   gl.drawElements(gl.LINES, 2, gl.UNSIGNED_SHORT, 0);
@@ -778,11 +858,11 @@ function drawGizmo() {
 
 function drawWireframe() {
   gl.useProgram(shaderProgramHud);
-  
+
   const modelMat = Mat4.translate(CAMERA_TARGET.sub(mesh.center)).toArray();
-  gl.uniform4fv(gl.getUniformLocation(shaderProgramHud, "color"), [0.8, 0.8, 0.8, 1]);
-  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramHud, "modelMat"), false, modelMat);
-  
+  gl.uniform4fv(gl.getUniformLocation(shaderProgramHud, 'color'), [0.8, 0.8, 0.8, 1]);
+  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramHud, 'modelMat'), false, modelMat);
+
   for (let i = 0; i < mesh.faces.length; i++) {
     gl.drawElements(gl.LINE_LOOP, 3, gl.UNSIGNED_SHORT, 3 * i);
   }
@@ -790,23 +870,22 @@ function drawWireframe() {
 
 function draw() {
   requestAnimationFrame(draw);
- 
+
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST);
   gl.lineWidth(1);
-  
+
   updateCamera();
   updateUniforms();
 
-  const posAttrLoc    = gl.getAttribLocation(shaderProgram, "position");
-  const normalAttrLoc = gl.getAttribLocation(shaderProgram, "normal");
+  const posAttrLoc    = gl.getAttribLocation(shaderProgram, 'position');
+  const normalAttrLoc = gl.getAttribLocation(shaderProgram, 'normal');
 
   gl.enableVertexAttribArray(posAttrLoc);
   gl.enableVertexAttribArray(normalAttrLoc);
 
   gl.useProgram(shaderProgram);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshIndexBuffer);
   gl.bindBuffer(gl.ARRAY_BUFFER, meshVertexBuffer);
   gl.vertexAttribPointer(posAttrLoc, 3, gl.FLOAT, false, 24, 0);
   gl.vertexAttribPointer(normalAttrLoc, 3, gl.FLOAT, false, 24, 12);
@@ -814,13 +893,24 @@ function draw() {
   if (bWireframe) {
     drawWireframe();
   } else {
-    gl.drawElements(gl.TRIANGLES, mesh.faces.length * 3, gl.UNSIGNED_SHORT, 0);
+    for (const o in mesh.objects) {
+      if (mesh.objects.hasOwnProperty(o)) {
+        for (const g in mesh.objects[o]) {
+          if (mesh.objects[o].hasOwnProperty(g)) {
+            const group = mesh.objects[o][g];
+            bindMaterial(group.material);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, group.indexBuffer);
+            gl.drawElements(gl.TRIANGLES, group.faces.length * 3, gl.UNSIGNED_SHORT, 0);
+          }
+        }
+      }
+    }
   }
 
   if (bDrawNormals) {
     drawNormals();
   }
-  
+
   if (bDrawGizmo) {
     drawGizmo();
   }
@@ -828,6 +918,7 @@ function draw() {
 
 initContext();
 initShaders();
+parseMaterials();
 parseMesh();
 initBuffers();
 draw();
