@@ -614,13 +614,13 @@ function parseMesh(): void {
             : parseInt(n.substr(0, n.indexOf('/'))) - 1;
         });
         for (let i = 1; i < indices.length - 1; i++) {
-          const indC = new Vec3([
+          const triangle = new Vec3([
             indices[0],
             indices[i],
             indices[i + 1]
           ]);
-          faces.push(indC);
-          objects[lastObject][lastGroup].faces.push(indC);
+          faces.push(triangle);
+          objects[lastObject][lastGroup].faces.push(triangle);
         }
         break;
       case 'usemtl':
