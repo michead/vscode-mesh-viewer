@@ -224,6 +224,10 @@ class Vec3 {
     ]);
   }
 
+  divScalar(b: number): Vec3 {
+    return this.mulScalar(1 / b);
+  }
+
   dot(b: Vec3): number {
     return this.x * b.x + this.y * b.y + this.z * b.z;
   }
@@ -243,7 +247,7 @@ class Vec3 {
 
   transformPos(b: Mat4): Vec3 {
     const res = new Vec4(this, 1).transform(b);
-    return res.xyz.mulScalar(1 / res.w);
+    return res.xyz.divScalar(res.w);
   }
 
   lengthSqrd(): number {
@@ -585,35 +589,62 @@ function parseMaterials(): void {
 function parseMesh(): void {
   mesh = new Mesh();
 
-  const lines = objData.split('\n');
+  const lines    = objData.split('\n');
   const vertices = [];
   const faces    = [];
   const objects  = {};
   let lastObject = '__default__';
   let lastGroup  = '__default__';
+  let offset     = 0;
   objects[lastObject] = {};
   objects[lastObject][lastGroup] = {};
   objects[lastObject][lastGroup].faces = [];
   objects[lastObject][lastGroup].material = '__default__';
 
   for (const line of lines) {
-    const [type, ...rest] = line.trim().split(' ');
+    const [type, ...rest] = line.trim().split(/\s+/);
     switch (type) {
       case 'v':
         const [x, y, z] = rest.map((n) => parseFloat(n));
         vertices.push(new Vec3([x, y, z]));
         break;
       case 'f':
-        const [a, b, c, d] = rest.map((n) => {
+        const indices = rest.map((n) => {
           return n.indexOf('/') < 0
-            ? parseInt(n) - 1
-            : parseInt(n.substr(0, n.indexOf('/'))) - 1;
+            ? parseInt(n) + offset - 1
+            : parseInt(n.substr(0, n.indexOf('/'))) + offset - 1;
         });
-        faces.push(new Vec3([a, b, c]));
-        objects[lastObject][lastGroup].faces.push(new Vec3([a, b, c]));
-        if (d) {
-          faces.push(new Vec3([a, c, d]));
-          objects[lastObject][lastGroup].faces.push(new Vec3([a, c, d]));
+        switch (indices.length) {
+          case 0:
+          case 1:
+          case 2:
+            break;
+          case 3:
+            const indA = new Vec3(indices.slice(0, 3));
+            faces.push(indA);
+            objects[lastObject][lastGroup].faces.push(indA);
+            break;
+          case 4:
+            const indB = new Vec3([indices[0], indices[2], indices[3]]);
+            faces.push(indB);
+            objects[lastObject][lastGroup].faces.push(indB);
+            break;
+          default:
+            const center = indices
+              .reduce((prev, curr) => prev.add(vertices[curr - 1]), new Vec3())
+              .divScalar(indices.length);
+            vertices.push(center);
+            indices.forEach((v, i) => {
+              const indC = new Vec3([
+                vertices.length - 1,
+                indices[i],
+                indices[(i + 1) % indices.length]
+              ]);
+              faces.push(indC);
+              objects[lastObject][lastGroup].faces.push(indC);
+            });
+            offset++;
+            break;
         }
         break;
       case 'usemtl':
@@ -661,7 +692,7 @@ function parseMesh(): void {
     mesh.vertices.forEach((vertex) => {
       center = center.add(vertex);
     });
-    return center.mulScalar(1 / mesh.vertices.length);
+    return center.divScalar(mesh.vertices.length);
   })();
   mesh.radius = ((): number => {
     let radius = Number.MIN_VALUE;

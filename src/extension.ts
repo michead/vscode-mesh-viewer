@@ -12,11 +12,11 @@ const DEFAULT_MATERIAL = {
 };
 
 function parseMaterial(materials, mtl) {
-  const materialName = mtl[0].trim().split(' ')[1];
+  const materialName = mtl[0].trim().split(/\s+/)[1];
   let material = {};
   let i = 1;
   while ( i < mtl.length && !/^newmtl/.test(mtl[i].trim())) {
-    const [...tokens] = mtl[i].split(' ');
+    const [...tokens] = mtl[i].split(/\s+/);
     if (tokens.length > 1) {
       switch (tokens[0]) {
         case 'Ka':
@@ -50,9 +50,9 @@ function parseMaterial(materials, mtl) {
 
 function mtlToMaterialObj(mtl) {
   const materials = {};
-  const lines = mtl.split('\n');
+  const lines = mtl.split('\n').map((l) => l.trim());
   for (let i = 0; i < lines.length;) {
-    while (!/^newmtl/.test(lines[i].trim())) {
+    while (!/^newmtl/.test(lines[i])) {
       i++;
     }
     i += parseMaterial(materials, lines.splice(i));
