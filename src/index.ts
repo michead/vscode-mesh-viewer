@@ -595,7 +595,6 @@ function parseMesh(): void {
   const objects  = {};
   let lastObject = '__default__';
   let lastGroup  = '__default__';
-  let offset     = 0;
   objects[lastObject] = {};
   objects[lastObject][lastGroup] = {};
   objects[lastObject][lastGroup].faces = [];
@@ -611,40 +610,17 @@ function parseMesh(): void {
       case 'f':
         const indices = rest.map((n) => {
           return n.indexOf('/') < 0
-            ? parseInt(n) + offset - 1
-            : parseInt(n.substr(0, n.indexOf('/'))) + offset - 1;
+            ? parseInt(n) - 1
+            : parseInt(n.substr(0, n.indexOf('/'))) - 1;
         });
-        switch (indices.length) {
-          case 0:
-          case 1:
-          case 2:
-            break;
-          case 3:
-            const indA = new Vec3(indices.slice(0, 3));
-            faces.push(indA);
-            objects[lastObject][lastGroup].faces.push(indA);
-            break;
-          case 4:
-            const indB = new Vec3([indices[0], indices[2], indices[3]]);
-            faces.push(indB);
-            objects[lastObject][lastGroup].faces.push(indB);
-            break;
-          default:
-            const center = indices
-              .reduce((prev, curr) => prev.add(vertices[curr - 1]), new Vec3())
-              .divScalar(indices.length);
-            vertices.push(center);
-            indices.forEach((v, i) => {
-              const indC = new Vec3([
-                vertices.length - 1,
-                indices[i],
-                indices[(i + 1) % indices.length]
-              ]);
-              faces.push(indC);
-              objects[lastObject][lastGroup].faces.push(indC);
-            });
-            offset++;
-            break;
+        for (let i = 1; i < indices.length - 1; i++) {
+          const indC = new Vec3([
+            indices[0],
+            indices[i],
+            indices[i + 1]
+          ]);
+          faces.push(indC);
+          objects[lastObject][lastGroup].faces.push(indC);
         }
         break;
       case 'usemtl':
