@@ -571,10 +571,10 @@ function parseMaterials(): void {
             case 'Ka':
             case 'Kd':
             case 'Ks':
-              material[prop] = new Vec3(mtl[prop].map((n) => parseFloat(n)));
+              material[prop.toLowerCase()] = new Vec3(mtl[prop].map((n) => parseFloat(n)));
               break;
             case 'Ns':
-              material[prop] = parseFloat(mtl[prop]);
+              material[prop.toLowerCase()] = parseFloat(mtl[prop]);
               break;
             default:
               break;
