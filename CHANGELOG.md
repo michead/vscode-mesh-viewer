@@ -1,5 +1,8 @@
 # Change Log
 
+## [0.0.7]
+- Minor update to README
+
 ## [0.0.6]
 - Limited mtl support
 - Support faces with more than 4 vertices
