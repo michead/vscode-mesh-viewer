@@ -19,3 +19,4 @@ Mouse wheel    | Zoom in and out
 
 ## Known Issues
 - `mtl` support is currently limited to properties `Ka`, `Kd`, `Ks`, `Ns`
+- Clumsy camera movement
