@@ -55,7 +55,7 @@ function mtlToMaterialObj(mtl) {
     while (!/^newmtl/.test(lines[i])) {
       i++;
     }
-    i += parseMaterial(materials, lines.splice(i));
+    i += parseMaterial(materials, lines.slice(i));
   }
   return materials;
 }
