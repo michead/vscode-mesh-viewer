@@ -1,5 +1,9 @@
 # Change Log
 
+## [0.0.6]
+- Limited mtl support
+- Support faces with more than 4 vertices
+
 ## [0.0.5]
 - Fix error occurring when loading .OBJ meshes with texture coordinates and/or normal indices specified in faces 
 
