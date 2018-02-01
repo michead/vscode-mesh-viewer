@@ -11,6 +11,26 @@ const DEFAULT_MATERIAL = {
   }
 };
 
+function imageTemplate(mapKd, data, ext) {
+  return `<image id="${encodeURI(mapKd)}" src="data:image/${ext};base64, ${data}"></image>`;
+}
+
+function htmlImageElements(materials, baseDir) {
+  const imageElements = [];
+  for (const m in materials) {
+    if (materials.hasOwnProperty(m)) {
+      const material = materials[m];
+      if (material.map_Kd) {
+        const fullPath = path.resolve(baseDir, material.map_Kd);
+        const data     = fs.readFileSync(fullPath, 'base64');
+        const ext      = material.map_Kd.substring(material.map_Kd.lastIndexOf('.'));
+        imageElements.push(imageTemplate(material.map_Kd, data, ext));
+      }
+    }
+  }
+  return imageElements;
+}
+
 function parseMaterial(materials, mtl) {
   const materialName = mtl[0].trim().split(/\s+/)[1];
   let material = {};
@@ -37,6 +57,12 @@ function parseMaterial(materials, mtl) {
             [tokens[0]]: parseFloat(tokens[1])
           };
           break;
+        case 'map_Kd':
+          material = {
+            ...material,
+            [tokens[0]]: tokens[1]
+          };
+          break;
         default:
           // Attribute unrecongnized or currently not supported
           break;
@@ -61,8 +87,9 @@ function mtlToMaterialObj(mtl) {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-    const disposable = vscode.commands.registerCommand('extension.openMeshPreview', (selectedItem) => {
-      const fsPath = selectedItem.fsPath as string;
+    const disposable   = vscode.commands.registerCommand('extension.openMeshPreview', (selectedItem) => {
+      const fsPath     = selectedItem.fsPath as string;
+      const fsDirname  = path.dirname(fsPath);
       const previewUri = vscode.Uri.parse(`mesh-preview://${fsPath}`);
 
       if (!fs.existsSync(fsPath)) {
@@ -83,7 +110,7 @@ export function activate(context: vscode.ExtensionContext) {
         for (const l of lines) {
           const line = l.trim();
           if (/^mtllib/.test(line)) {
-            const mtlPath = path.resolve(path.dirname(fsPath), line.split(' ')[1]);
+            const mtlPath = path.resolve(fsDirname, line.split(' ')[1]);
             if (fs.existsSync(mtlPath)) {
               Object.assign(materials, mtlToMaterialObj(fs.readFileSync(mtlPath).toString('utf-8')));
             }
@@ -96,6 +123,7 @@ export function activate(context: vscode.ExtensionContext) {
               .toString('utf-8')
               .replace('${mesh}', data.toString('utf-8'))
               .replace('${material}', JSON.stringify(materials))
+              .replace('${images}', htmlImageElements(materials, fsDirname).join(''))
               .replace(/\${outPath}/g, __dirname);
           }
         });

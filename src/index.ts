@@ -185,6 +185,26 @@ class Mat4 {
   }
 }
 
+class Vec2 {
+  private elements: number[];
+
+  constructor(elements: number[] = [0, 0, 0]) {
+    this.elements = elements;
+  }
+
+  get u() {
+    return this.elements[0];
+  }
+
+  get v() {
+    return this.elements[1];
+  }
+
+  toArray(): number[] {
+    return this.elements;
+  }
+}
+
 class Vec3 {
   private elements: number[];
 
@@ -394,6 +414,7 @@ type MeshObject = {
 
 class Mesh {
   vertices: Vec3[];
+  texCoords: Vec2[];
   faces: Vec3[];
   center: Vec3;
   radius: number;
@@ -589,12 +610,13 @@ function parseMaterials(): void {
 function parseMesh(): void {
   mesh = new Mesh();
 
-  const lines    = objData.split('\n');
-  const vertices = [];
-  const faces    = [];
-  const objects  = {};
-  let lastObject = '__default__';
-  let lastGroup  = '__default__';
+  const lines     = objData.split('\n');
+  const vertices  = [];
+  const texCoords = [];
+  const faces     = [];
+  const objects   = {};
+  let lastObject  = '__default__';
+  let lastGroup   = '__default__';
   objects[lastObject] = {};
   objects[lastObject][lastGroup] = {};
   objects[lastObject][lastGroup].faces = [];
@@ -606,6 +628,10 @@ function parseMesh(): void {
       case 'v':
         const [x, y, z] = rest.map((n) => parseFloat(n));
         vertices.push(new Vec3([x, y, z]));
+        break;
+      case 'vt':
+        const [u, v] = rest.map((n) => parseFloat(n));
+        texCoords.push(new Vec2([x, y, z]));
         break;
       case 'f':
         const indices = rest.map((n) => {
@@ -659,9 +685,10 @@ function parseMesh(): void {
     }
   }
 
-  mesh.vertices = vertices;
-  mesh.objects  = objects;
-  mesh.faces = faces;
+  mesh.vertices  = vertices;
+  mesh.texCoords = texCoords;
+  mesh.objects   = objects;
+  mesh.faces     = faces;
 
   mesh.center = ((): Vec3 => {
     let center = new Vec3();
@@ -736,6 +763,9 @@ function initBuffers() {
     attributes.push(normals[i].x);
     attributes.push(normals[i].y);
     attributes.push(normals[i].z);
+
+    attributes.push(mesh.texCoords[i].u);
+    attributes.push(mesh.texCoords[i].v);
   });
 
   meshVertexBuffer = gl.createBuffer();
@@ -748,6 +778,18 @@ function initBuffers() {
 
   gl.bindBuffer(gl.ARRAY_BUFFER, gizmoVertexBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(GIZMO_VERTICES), gl.STATIC_DRAW);
+}
+
+function loadTexture(id: string): WebGLTexture {
+  const texture = gl.createTexture();
+
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, document.getElementById(id) as HTMLImageElement);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+  return texture;
 }
 
 function updateCamera() {
@@ -886,16 +928,18 @@ function draw() {
   updateCamera();
   updateUniforms();
 
-  const posAttrLoc    = gl.getAttribLocation(shaderProgram, 'position');
-  const normalAttrLoc = gl.getAttribLocation(shaderProgram, 'normal');
+  const posAttrLoc      = gl.getAttribLocation(shaderProgram, 'position');
+  const normalAttrLoc   = gl.getAttribLocation(shaderProgram, 'normal');
+  const texCoordAttrLoc = gl.getAttribLocation(shaderProgram, 'texCoord');
 
   gl.enableVertexAttribArray(posAttrLoc);
   gl.enableVertexAttribArray(normalAttrLoc);
 
   gl.useProgram(shaderProgram);
   gl.bindBuffer(gl.ARRAY_BUFFER, meshVertexBuffer);
-  gl.vertexAttribPointer(posAttrLoc, 3, gl.FLOAT, false, 24, 0);
-  gl.vertexAttribPointer(normalAttrLoc, 3, gl.FLOAT, false, 24, 12);
+  gl.vertexAttribPointer(posAttrLoc, 3, gl.FLOAT, false, 32, 0);
+  gl.vertexAttribPointer(normalAttrLoc, 3, gl.FLOAT, false, 32, 12);
+  gl.vertexAttribPointer(texCoordAttrLoc, 2, gl.FLOAT, false, 32, 24);
 
   if (bWireframe) {
     drawWireframe();
