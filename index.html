@@ -4,16 +4,19 @@
     <script id="mesh-preview-vert-shader" type="x-shader/x-vertex">
       attribute vec3 position;
       attribute vec3 normal;
+      attribute vec2 texCoord;
       uniform mat4 modelMat;
       uniform mat4 viewMat;
       uniform mat4 projMat;
       varying vec3 worldPos;
       varying vec3 worldNormal;
+      varying vec2 fragTexCoord;
       void main(void) {
         gl_Position = projMat * viewMat * modelMat * vec4(position, 1.0);
         vec4 worldPos4 = modelMat * vec4(position, 1);
         worldPos = worldPos4.xyz / worldPos4.w;
         worldNormal = normal;
+        fragTexCoord = texCoord;
       }
     </script>
     <script id="mesh-preview-frag-shader" type="x-shader/x-fragment">
@@ -23,8 +26,11 @@
       uniform vec3 kd;
       uniform vec3 ks;
       uniform float ns;
+      uniform bool bKdMap;
+      uniform sampler2D kdMap;
       varying vec3 worldPos;
       varying vec3 worldNormal;
+      varying vec2 fragTexCoord;
       void main(void) {
         vec3 normal = normalize(worldNormal);
         vec3 lightDir = normalize(lightPos - worldPos);
@@ -42,7 +48,8 @@
           }
           specular = pow(r, ns);
         }
-        vec3 colorLinear = ka + lambertian * kd + specular * ks;
+        vec3 diffuse = bKdMap ? texture2D(kdMap, fragTexCoord).rgb : kd;
+        vec3 colorLinear = ka + lambertian * diffuse + specular * ks;
         gl_FragColor = vec4(colorLinear, 1.0);
       }
     </script>
@@ -66,7 +73,7 @@
   <body style="overflow:hidden;">
     <canvas id="mesh-preview-canvas"></canvas>
     <div id="mesh-preview-mtl" style="display:none;">
-      ${material}
+      ${materials}
     </div>
     <div id="mesh-preview-obj" style="display:none;">
       ${mesh}

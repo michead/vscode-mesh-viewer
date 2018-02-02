@@ -11,8 +11,8 @@ const DEFAULT_MATERIAL = {
   }
 };
 
-function imageTemplate(mapKd, data, ext) {
-  return `<image id="${encodeURI(mapKd)}" src="data:image/${ext};base64, ${data}"></image>`;
+function imageTemplate(materialName, data, ext) {
+  return `<image id="${materialName}" src="data:image/${ext};base64, ${data}"></image>`;
 }
 
 function htmlImageElements(materials, baseDir) {
@@ -23,8 +23,8 @@ function htmlImageElements(materials, baseDir) {
       if (material.map_Kd) {
         const fullPath = path.resolve(baseDir, material.map_Kd);
         const data     = fs.readFileSync(fullPath, 'base64');
-        const ext      = material.map_Kd.substring(material.map_Kd.lastIndexOf('.'));
-        imageElements.push(imageTemplate(material.map_Kd, data, ext));
+        const ext      = material.map_Kd.substring(material.map_Kd.lastIndexOf('.') + 1);
+        imageElements.push(imageTemplate(`${m}_map_Kd`, data, ext));
       }
     }
   }
@@ -122,7 +122,7 @@ export function activate(context: vscode.ExtensionContext) {
             return fs.readFileSync(path.resolve(__dirname, '../../index.html'))
               .toString('utf-8')
               .replace('${mesh}', data.toString('utf-8'))
-              .replace('${material}', JSON.stringify(materials))
+              .replace('${materials}', JSON.stringify(materials))
               .replace('${images}', htmlImageElements(materials, fsDirname).join(''))
               .replace(/\${outPath}/g, __dirname);
           }
