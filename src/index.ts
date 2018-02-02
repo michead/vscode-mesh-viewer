@@ -400,10 +400,16 @@ class Material {
   kd: Vec3 = new Vec3([0.64, 0.64, 0.64]);
   ks: Vec3 = new Vec3([0.00005, 0.00005, 0.00005]);
   ns: number = 10;
+  kdMap: WebGLTexture;
 }
 
+type Face = {
+  index: Vec3,
+  texCoord: Vec3
+};
+
 type MeshGroup = {
-  faces: Vec3[];
+  faces: Face[];
   material: string,
   indexBuffer: WebGLBuffer;
 };
@@ -415,7 +421,7 @@ type MeshObject = {
 class Mesh {
   vertices: Vec3[];
   texCoords: Vec2[];
-  faces: Vec3[];
+  faces: Face[];
   center: Vec3;
   radius: number;
   normals: Vec3[];
@@ -580,7 +586,7 @@ function initShaders(): void {
   }
 }
 
-function parseMaterials(): void {
+async function parseMaterials() {
   const materialObj = JSON.parse(mtlData);
   for (const m in materialObj) {
     if (materialObj.hasOwnProperty(m)) {
@@ -596,6 +602,9 @@ function parseMaterials(): void {
               break;
             case 'Ns':
               material[prop.toLowerCase()] = parseFloat(mtl[prop]);
+              break;
+            case 'map_Kd':
+              material.kdMap = loadTexture(`${m}_map_Kd`);
               break;
             default:
               break;
@@ -631,22 +640,34 @@ function parseMesh(): void {
         break;
       case 'vt':
         const [u, v] = rest.map((n) => parseFloat(n));
-        texCoords.push(new Vec2([x, y, z]));
+        texCoords.push(new Vec2([u, v]));
         break;
       case 'f':
-        const indices = rest.map((n) => {
-          return n.indexOf('/') < 0
-            ? parseInt(n) - 1
-            : parseInt(n.substr(0, n.indexOf('/'))) - 1;
+        const f = rest.map((n) => {
+          if (n.indexOf('/') < 0) {
+            return {
+              index: parseInt(n) - 1,
+              texCoord: undefined
+            };
+          }
+          return {
+            index: parseInt(n.substr(0, n.indexOf('/'))) - 1,
+            texCoord: parseInt(n.substr(n.indexOf('/'))) - 1
+          };
         });
-        for (let i = 1; i < indices.length - 1; i++) {
-          const triangle = new Vec3([
-            indices[0],
-            indices[i],
-            indices[i + 1]
+        for (let i = 1; i < f.length - 1; i++) {
+          const index = new Vec3([
+            f[0].index,
+            f[i].index,
+            f[i + 1].index
           ]);
-          faces.push(triangle);
-          objects[lastObject][lastGroup].faces.push(triangle);
+          const texCoord = new Vec3([
+            f[0].texCoord,
+            f[i].texCoord,
+            f[i + 1].texCoord
+          ]);
+          faces.push({ index, texCoord });
+          objects[lastObject][lastGroup].faces.push({ index, texCoord });
         }
         break;
       case 'usemtl':
@@ -710,12 +731,12 @@ function parseMesh(): void {
   mesh.normals = ((): Vec3[] => {
     const normals = new Array(mesh.vertices.length).fill(void 0).map(() => new Vec3()) as Vec3[];
     for (const face of mesh.faces) {
-      const a = mesh.vertices[face.y].sub(mesh.vertices[face.x]);
-      const b = mesh.vertices[face.y].sub(mesh.vertices[face.z]);
+      const a = mesh.vertices[face.index.y].sub(mesh.vertices[face.index.x]);
+      const b = mesh.vertices[face.index.y].sub(mesh.vertices[face.index.z]);
       const faceNormal = b.cross(a).normalized();
-      normals[face.x] = normals[face.x].add(faceNormal);
-      normals[face.y] = normals[face.y].add(faceNormal);
-      normals[face.z] = normals[face.z].add(faceNormal);
+      normals[face.index.x] = normals[face.index.x].add(faceNormal);
+      normals[face.index.y] = normals[face.index.y].add(faceNormal);
+      normals[face.index.z] = normals[face.index.z].add(faceNormal);
     }
     return normals.map((n) => n.normalized());
   })();
@@ -741,9 +762,9 @@ function initBuffers() {
           const indices = [];
 
           group.faces.forEach((face) => {
-            indices.push(face.x);
-            indices.push(face.y);
-            indices.push(face.z);
+            indices.push(face.index.x);
+            indices.push(face.index.y);
+            indices.push(face.index.z);
           });
 
           group.indexBuffer  = gl.createBuffer();
@@ -809,10 +830,12 @@ function updateCamera() {
 }
 
 function bindMaterial(materialName) {
-  const kaUniform = gl.getUniformLocation(shaderProgram, 'ka');
-  const kdUniform = gl.getUniformLocation(shaderProgram, 'kd');
-  const ksUniform = gl.getUniformLocation(shaderProgram, 'ks');
-  const nsUniform = gl.getUniformLocation(shaderProgram, 'ns');
+  const kaUniform     = gl.getUniformLocation(shaderProgram, 'ka');
+  const kdUniform     = gl.getUniformLocation(shaderProgram, 'kd');
+  const ksUniform     = gl.getUniformLocation(shaderProgram, 'ks');
+  const nsUniform     = gl.getUniformLocation(shaderProgram, 'ns');
+  const bKdMapUniform = gl.getUniformLocation(shaderProgram, 'bKdMap');
+  const kdMapUniform  = gl.getUniformLocation(shaderProgram, 'kdMap');
 
   gl.useProgram(shaderProgram);
 
@@ -820,6 +843,11 @@ function bindMaterial(materialName) {
   gl.uniform3fv(kdUniform, materials[materialName].kd.toArray());
   gl.uniform3fv(ksUniform, materials[materialName].ks.toArray());
   gl.uniform1f(nsUniform, materials[materialName].ns);
+  gl.uniform1f(bKdMapUniform, materials[materialName].kdMap ? 1 : 0);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, materials[materialName].kdMap);
+  gl.uniform1i(kdMapUniform, 0);
 }
 
 function updateUniforms() {
@@ -934,6 +962,7 @@ function draw() {
 
   gl.enableVertexAttribArray(posAttrLoc);
   gl.enableVertexAttribArray(normalAttrLoc);
+  gl.enableVertexAttribArray(texCoordAttrLoc);
 
   gl.useProgram(shaderProgram);
   gl.bindBuffer(gl.ARRAY_BUFFER, meshVertexBuffer);
