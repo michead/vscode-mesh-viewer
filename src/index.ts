@@ -443,6 +443,7 @@ let cameraRight     = new Vec3([1, 0, 0]);
 let cameraArmLen    = 25;
 let cameraMinArmLen = 2;
 let cameraMaxArmLen = 90;
+let perVertTexCoord = false;
 let lightPos: Vec3;
 let deltaYaw   = 0;
 let deltaPitch = 0;
@@ -454,6 +455,7 @@ let bDrawNormals = false;
 let gizmoLineLen  = 10;
 let normalLineLen = 1;
 
+let fallbackTexture: WebGLTexture;
 const materials: Materials = {};
 
 const CAMERA_MOVEMENT_SPEED = 0.008;
@@ -540,6 +542,9 @@ document.body.addEventListener('mousemove', (evt: MouseEvent) => {
 function initContext(): void {
   gl = canvas.getContext('webgl', { antialias: true });
   gl.clearColor(0, 0, 0, 1);
+  fallbackTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, fallbackTexture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
 }
 
 function initShaders(): void {
@@ -619,16 +624,17 @@ async function parseMaterials() {
 function parseMesh(): void {
   mesh = new Mesh();
 
-  const lines     = objData.split('\n');
-  const vertices  = [];
-  const texCoords = [];
-  const faces     = [];
-  const objects   = {};
-  let lastObject  = '__default__';
-  let lastGroup   = '__default__';
-  objects[lastObject] = {};
-  objects[lastObject][lastGroup] = {};
-  objects[lastObject][lastGroup].faces = [];
+  const lines            = objData.split('\n');
+  const vertices         = [];
+  const texCoords        = [];
+  const faces            = [];
+  const objects          = {};
+  let lastObject         = '__default__';
+  let lastGroup          = '__default__';
+  let perVertAttrChecked = false;
+  objects[lastObject]                     = {};
+  objects[lastObject][lastGroup]          = {};
+  objects[lastObject][lastGroup].faces    = [];
   objects[lastObject][lastGroup].material = '__default__';
 
   for (const line of lines) {
@@ -643,6 +649,13 @@ function parseMesh(): void {
         texCoords.push(new Vec2([u, v]));
         break;
       case 'f':
+        if (!perVertAttrChecked) {
+          const slashCount = (rest[0].match(/\//g) || []).length;
+          if (slashCount > 0 && !isNaN(parseInt(rest[0].split('/')[1]))) {
+            perVertTexCoord    = true;
+          }
+          perVertAttrChecked = true;
+        }
         const f = rest.map((n) => {
           if (n.indexOf('/') < 0) {
             return {
@@ -784,7 +797,6 @@ function initBuffers() {
       group.faces.forEach((face) => {
         ['x', 'y', 'z'].forEach((c) => {
           const index = face.index[c];
-          const texIndex = face.texCoord[c];
 
           const vertex = mesh.vertices[index];
           attributes.push(vertex.x);
@@ -796,9 +808,12 @@ function initBuffers() {
           attributes.push(normal.y);
           attributes.push(normal.z);
 
-          const texCoord = mesh.texCoords[texIndex];
-          attributes.push(texCoord.u);
-          attributes.push(texCoord.v);
+          if (perVertTexCoord) {
+            const texIndex = face.texCoord[c];
+            const texCoord = mesh.texCoords[texIndex];
+            attributes.push(texCoord.u);
+            attributes.push(texCoord.v);
+          }
         });
       });
     });
@@ -861,7 +876,7 @@ function bindMaterial(materialName) {
   gl.uniform1f(bKdMapUniform, materials[materialName].kdMap ? 1 : 0);
 
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, materials[materialName].kdMap);
+  gl.bindTexture(gl.TEXTURE_2D, materials[materialName].kdMap || fallbackTexture);
   gl.uniform1i(kdMapUniform, 0);
 }
 
@@ -973,17 +988,22 @@ function draw() {
 
   const posAttrLoc      = gl.getAttribLocation(shaderProgram, 'position');
   const normalAttrLoc   = gl.getAttribLocation(shaderProgram, 'normal');
-  const texCoordAttrLoc = gl.getAttribLocation(shaderProgram, 'texCoord');
+
+  const stride = perVertTexCoord ? 32 : 24;
 
   gl.enableVertexAttribArray(posAttrLoc);
   gl.enableVertexAttribArray(normalAttrLoc);
-  gl.enableVertexAttribArray(texCoordAttrLoc);
 
   gl.useProgram(shaderProgram);
   gl.bindBuffer(gl.ARRAY_BUFFER, meshVertexBuffer);
-  gl.vertexAttribPointer(posAttrLoc, 3, gl.FLOAT, false, 32, 0);
-  gl.vertexAttribPointer(normalAttrLoc, 3, gl.FLOAT, false, 32, 12);
-  gl.vertexAttribPointer(texCoordAttrLoc, 2, gl.FLOAT, false, 32, 24);
+  gl.vertexAttribPointer(posAttrLoc, 3, gl.FLOAT, false, stride, 0);
+  gl.vertexAttribPointer(normalAttrLoc, 3, gl.FLOAT, false, stride, 12);
+
+  if (perVertTexCoord) {
+    const texCoordAttrLoc = gl.getAttribLocation(shaderProgram, 'texCoord');
+    gl.enableVertexAttribArray(texCoordAttrLoc);
+    gl.vertexAttribPointer(texCoordAttrLoc, 2, gl.FLOAT, false, stride, 24);
+  }
 
   if (bWireframe) {
     drawWireframe();
