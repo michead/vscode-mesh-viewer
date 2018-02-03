@@ -1,7 +1,7 @@
 {
   "name": "vscode-mesh-viewer",
   "displayName": "vscode-mesh-viewer",
-  "description": "Preview 3D models within VSCode",
+  "description": "Render 3D models within VS Code",
   "author": {
     "name": "Simone Riccardelli",
     "url": "https://github.com/michead"
