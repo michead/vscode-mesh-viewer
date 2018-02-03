@@ -1,5 +1,8 @@
 # Change Log
 
+## [0.0.8]
+- Support for map_Kd (diffuse texture map)
+
 ## [0.0.7]
 - Minor update to README
 
