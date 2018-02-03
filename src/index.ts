@@ -639,7 +639,7 @@ function parseMesh(): void {
         vertices.push(new Vec3([x, y, z]));
         break;
       case 'vt':
-        const [u, v] = rest.map((n) => parseFloat(n));
+        const [u, v] = rest.map((n) => 1 - parseFloat(n));
         texCoords.push(new Vec2([u, v]));
         break;
       case 'f':
@@ -652,7 +652,7 @@ function parseMesh(): void {
           }
           return {
             index: parseInt(n.substr(0, n.indexOf('/'))) - 1,
-            texCoord: parseInt(n.substr(n.indexOf('/'))) - 1
+            texCoord: parseInt(n.substr(n.indexOf('/') + 1)) - 1
           };
         });
         for (let i = 1; i < f.length - 1; i++) {
@@ -754,6 +754,7 @@ function initBuffers() {
   const attributes = [];
   const normals = mesh.normals;
 
+  let i = 0;
   for (const o in mesh.objects) {
     if (mesh.objects.hasOwnProperty(o)) {
       for (const g in mesh.objects[o]) {
@@ -762,9 +763,9 @@ function initBuffers() {
           const indices = [];
 
           group.faces.forEach((face) => {
-            indices.push(face.index.x);
-            indices.push(face.index.y);
-            indices.push(face.index.z);
+            indices.push(i++);
+            indices.push(i++);
+            indices.push(i++);
           });
 
           group.indexBuffer  = gl.createBuffer();
@@ -776,17 +777,31 @@ function initBuffers() {
     }
   }
 
-  mesh.vertices.forEach((vertex, i) => {
-    attributes.push(vertex.x);
-    attributes.push(vertex.y);
-    attributes.push(vertex.z);
+  Object.keys(mesh.objects).forEach((o) => {
+    const object = mesh.objects[o];
+    Object.keys(object).forEach((g) => {
+      const group = object[g];
+      group.faces.forEach((face) => {
+        ['x', 'y', 'z'].forEach((c) => {
+          const index = face.index[c];
+          const texIndex = face.texCoord[c];
 
-    attributes.push(normals[i].x);
-    attributes.push(normals[i].y);
-    attributes.push(normals[i].z);
+          const vertex = mesh.vertices[index];
+          attributes.push(vertex.x);
+          attributes.push(vertex.y);
+          attributes.push(vertex.z);
 
-    attributes.push(mesh.texCoords[i].u);
-    attributes.push(mesh.texCoords[i].v);
+          const normal = normals[index];
+          attributes.push(normal.x);
+          attributes.push(normal.y);
+          attributes.push(normal.z);
+
+          const texCoord = mesh.texCoords[texIndex];
+          attributes.push(texCoord.u);
+          attributes.push(texCoord.v);
+        });
+      });
+    });
   });
 
   meshVertexBuffer = gl.createBuffer();
