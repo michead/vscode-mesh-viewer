@@ -396,11 +396,16 @@ type Materials = {
 };
 
 class Material {
-  ka: Vec3 = new Vec3();
-  kd: Vec3 = new Vec3([0.64, 0.64, 0.64]);
-  ks: Vec3 = new Vec3([0.00005, 0.00005, 0.00005]);
-  ns: number = 10;
-  kdMap: WebGLTexture;
+  Ka: Vec3 = new Vec3();
+  Kd: Vec3 = new Vec3([0.64, 0.64, 0.64]);
+  Ks: Vec3 = new Vec3([0.00005, 0.00005, 0.00005]);
+  Ns: number = 10;
+  d: number = 1;
+  map_Ka?: WebGLTexture;
+  map_Kd?: WebGLTexture;
+  map_Ks?: WebGLTexture;
+  map_Ns?: WebGLTexture;
+  map_d?: WebGLTexture;
 }
 
 type Face = {
@@ -603,13 +608,18 @@ async function parseMaterials() {
             case 'Ka':
             case 'Kd':
             case 'Ks':
-              material[prop.toLowerCase()] = new Vec3(mtl[prop].map((n) => parseFloat(n)));
+              material[prop] = new Vec3(mtl[prop].map((n) => parseFloat(n)));
               break;
             case 'Ns':
-              material[prop.toLowerCase()] = parseFloat(mtl[prop]);
+            case 'd':
+              material[prop] = parseFloat(mtl[prop]);
               break;
+            case 'map_Ka':
             case 'map_Kd':
-              material.kdMap = loadTexture(`${m}_map_Kd`);
+            case 'map_Ks':
+            case 'map_Ns':
+            case 'map_d':
+              material[prop] = loadTexture(`${m}_${prop}`);
               break;
             default:
               break;
@@ -860,24 +870,35 @@ function updateCamera() {
 }
 
 function bindMaterial(materialName) {
-  const kaUniform     = gl.getUniformLocation(shaderProgram, 'ka');
-  const kdUniform     = gl.getUniformLocation(shaderProgram, 'kd');
-  const ksUniform     = gl.getUniformLocation(shaderProgram, 'ks');
-  const nsUniform     = gl.getUniformLocation(shaderProgram, 'ns');
-  const bKdMapUniform = gl.getUniformLocation(shaderProgram, 'bKdMap');
-  const kdMapUniform  = gl.getUniformLocation(shaderProgram, 'kdMap');
+  const kaUniform     = gl.getUniformLocation(shaderProgram, 'Ka');
+  const kdUniform     = gl.getUniformLocation(shaderProgram, 'Kd');
+  const ksUniform     = gl.getUniformLocation(shaderProgram, 'Ks');
+  const nsUniform     = gl.getUniformLocation(shaderProgram, 'Ns');
+  const dUniform      = gl.getUniformLocation(shaderProgram, 'd');
 
   gl.useProgram(shaderProgram);
 
-  gl.uniform3fv(kaUniform, materials[materialName].ka.toArray());
-  gl.uniform3fv(kdUniform, materials[materialName].kd.toArray());
-  gl.uniform3fv(ksUniform, materials[materialName].ks.toArray());
-  gl.uniform1f(nsUniform, materials[materialName].ns);
-  gl.uniform1f(bKdMapUniform, materials[materialName].kdMap ? 1 : 0);
+  gl.uniform3fv(kaUniform, materials[materialName].Ka.toArray());
+  gl.uniform3fv(kdUniform, materials[materialName].Kd.toArray());
+  gl.uniform3fv(ksUniform, materials[materialName].Ks.toArray());
+  gl.uniform1f(nsUniform, materials[materialName].Ns);
+  gl.uniform1f(dUniform, materials[materialName].d);
 
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, materials[materialName].kdMap || fallbackTexture);
-  gl.uniform1i(kdMapUniform, 0);
+  [
+    'map_Ka',
+    'map_Kd',
+    'map_Ks',
+    'map_Ns',
+    'map_d'
+  ].forEach((prop, i) => {
+    const bMapUniform = gl.getUniformLocation(shaderProgram, `b_${prop}`);
+    const mapUniform  = gl.getUniformLocation(shaderProgram, prop);
+
+    gl.uniform1f(bMapUniform, materials[materialName][prop] ? 1 : 0);
+    gl.activeTexture(gl[`TEXTURE${i}`]);
+    gl.bindTexture(gl.TEXTURE_2D, materials[materialName][prop] || fallbackTexture);
+    gl.uniform1i(mapUniform, i);
+  });
 }
 
 function updateUniforms() {

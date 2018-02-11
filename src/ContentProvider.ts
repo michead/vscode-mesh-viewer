@@ -8,12 +8,13 @@ export default class ContentProvider implements vscode.TextDocumentContentProvid
       Ka: [0, 0, 0],
       Kd: [0.5, 0.5, 0.5],
       Ks: [0.005, 0.005, 0.005],
-      Ns: 10
+      Ns: 10,
+      d: 1
     }
   };
 
-  private static imageTemplate(materialName, data, ext) {
-    return `<image style="display:none;" id="${materialName}" src="data:image/${ext};base64, ${data}"></image>`;
+  private static imageTemplate(id, data, ext) {
+    return `<image style="display:none;" id="${id}" src="data:image/${ext};base64, ${data}"></image>`;
   }
 
   private static htmlImageElements(materials, baseDir) {
@@ -21,12 +22,18 @@ export default class ContentProvider implements vscode.TextDocumentContentProvid
     for (const m in materials) {
       if (materials.hasOwnProperty(m)) {
         const material = materials[m];
-        if (material.map_Kd) {
-          const fullPath = path.resolve(baseDir, material.map_Kd);
+        [
+          'map_Ka',
+          'map_Kd',
+          'map_Ks',
+          'map_Ns',
+          'map_d',
+        ].filter((prop) => !!material[prop]).forEach((prop) => {
+          const fullPath = path.resolve(baseDir, material[prop]);
           const data     = fs.readFileSync(fullPath, 'base64');
-          const ext      = material.map_Kd.substring(material.map_Kd.lastIndexOf('.') + 1);
-          imageElements.push(ContentProvider.imageTemplate(`${m}_map_Kd`, data, ext));
-        }
+          const ext      = material[prop].substring(material[prop].lastIndexOf('.') + 1);
+          imageElements.push(ContentProvider.imageTemplate(`${m}_${prop}`, data, ext));
+        });
       }
     }
     return imageElements;
@@ -53,12 +60,23 @@ export default class ContentProvider implements vscode.TextDocumentContentProvid
             };
             break;
           case 'Ns':
+          case 'd':
             material = {
               ...material,
               [tokens[0]]: parseFloat(tokens[1])
             };
             break;
+          case 'Tr':
+            material = {
+              ...material,
+              d: 1 - parseFloat(tokens[1])
+            };
+            break;
+          case 'map_Ka':
           case 'map_Kd':
+          case 'map_Ks':
+          case 'map_Ns':
+          case 'map_d':
             material = {
               ...material,
               [tokens[0]]: tokens[1]
@@ -105,7 +123,7 @@ export default class ContentProvider implements vscode.TextDocumentContentProvid
       .toString('utf-8')
       .replace('${mesh}', data.toString('utf-8'))
       .replace('${materials}', JSON.stringify(materials))
-      .replace('${images}', ContentProvider.htmlImageElements(materials, dirname).join(''))
+      .replace('${textures}', ContentProvider.htmlImageElements(materials, dirname).join(''))
       .replace(/\${outPath}/g, __dirname);
   }
 }
