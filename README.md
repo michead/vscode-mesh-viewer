@@ -18,6 +18,6 @@ Mouse wheel    | Zoom in and out
 `G`            | Toggle `x`, `y`, `z` axes
 
 ## Known Issues
-- `mtl` support is currently limited to properties `Ka`, `Kd`, `Ks`, `Ns`, `d` (and `Tr`), `map_Ka`, `map_Kd`, `map_Ks`, `map_Ns`, `map_d`
+- `mtl` support is currently limited to properties `Ka`, `Kd`, `Ks`, `Ns`, `d`, `map_Ka`, `map_Kd`, `map_Ks`, `map_Ns`, `map_d`
 - Rendering 3D models from different .obj files in separate tabs is not yet supported
 - Clumsy camera movement
