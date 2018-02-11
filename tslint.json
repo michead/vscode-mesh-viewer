@@ -9,6 +9,7 @@
     "ordered-imports": false,
     "quotemark": [true, "single"],
     "radix": false,
-    "trailing-comma": false
+    "trailing-comma": false,
+    "variable-name": [true, "allow-snake-case", "allow-pascal-case"]
   }
 }
