@@ -22,22 +22,39 @@
     <script id="mesh-preview-frag-shader" type="x-shader/x-fragment">
       precision mediump float;
       uniform vec3 lightPos;
-      uniform vec3 ka;
-      uniform vec3 kd;
-      uniform vec3 ks;
-      uniform float ns;
-      uniform bool bKdMap;
-      uniform sampler2D kdMap;
+      uniform vec3 Ka;
+      uniform vec3 Kd;
+      uniform vec3 Ks;
+      uniform float Ns;
+      uniform float d;
+      uniform bool b_map_Ka;
+      uniform sampler2D map_Ka;
+      uniform bool b_map_Kd;
+      uniform sampler2D map_Kd;
+      uniform bool b_map_Ks;
+      uniform sampler2D map_Ks;
+      uniform bool b_map_Ns;
+      uniform sampler2D map_Ns;
+      uniform bool b_map_d;
+      uniform sampler2D map_d;
       varying vec3 worldPos;
       varying vec3 worldNormal;
       varying vec2 fragTexCoord;
+
       void main(void) {
+        vec3 ka = b_map_Ka ? texture2D(map_Ka, fragTexCoord).rgb : Ka;
+        vec3 kd = b_map_Kd ? texture2D(map_Kd, fragTexCoord).rgb : Kd;
+        vec3 ks = b_map_Ks ? texture2D(map_Ks, fragTexCoord).rgb : Ks;
+        float ns = b_map_Ns ? texture2D(map_Ns, fragTexCoord).r : Ns;
+        float alpha = b_map_d ? texture2D(map_d, fragTexCoord).r : d;
+
         vec3 normal = normalize(worldNormal);
         vec3 lightDir = normalize(lightPos - worldPos);
         float lambertian = dot(lightDir, normal);
         if (lambertian < 0.0) {
           lambertian = 0.0;
         }
+
         float specular = 0.0;
         if (lambertian > 0.0) {
           vec3 viewDir = normalize(-worldPos);
@@ -48,9 +65,9 @@
           }
           specular = pow(r, ns);
         }
-        vec3 diffuse = bKdMap ? texture2D(kdMap, fragTexCoord).rgb : kd;
-        vec3 colorLinear = ka + lambertian * diffuse + specular * ks;
-        gl_FragColor = vec4(colorLinear, 1.0);
+
+        vec3 colorLinear = ka + lambertian * kd + specular * ks;
+        gl_FragColor = vec4(colorLinear, alpha);
       }
     </script>
     <script id="mesh-preview-vert-shader-hud" type="x-shader/x-vertex">
@@ -78,7 +95,7 @@
     <div id="mesh-preview-obj" style="display:none;">
       ${mesh}
     </div>
-    ${images}
-    <script type="text/javascript" src="file:///${outPath}/index.js"></script>
+    ${textures}
+    <script type="text/javascript" src="${outPath}/index.js"></script>
   </body>
 </html>
