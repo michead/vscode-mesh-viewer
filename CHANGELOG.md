@@ -1,7 +1,10 @@
 # Change Log
 
+## [0.0.10]
+- Minor update to README
+
 ## [0.0.9]
-- Extend mtl support: `d` (and `Tr`), `map_Ka`, `map_Ks`, `map_Ns`, `map_d`
+- Extend mtl support: `d`, `map_Ka`, `map_Ks`, `map_Ns`, `map_d`
 
 ## [0.0.8]
 - Support for `map_Kd` (diffuse texture map)
