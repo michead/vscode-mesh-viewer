@@ -29,36 +29,30 @@
   ],
   "main": "./out/src/extension",
   "contributes": {
-    "commands": [
-      {
-        "command": "extension.openMeshPreview",
-        "title": "Open Mesh Preview"
-      }
-    ],
+    "commands": [{
+      "command": "extension.openMeshPreview",
+      "title": "Open Mesh Preview"
+    }],
     "menus": {
-      "explorer/context": [
-        {
-          "when": "resourceLangId == 'obj'",
-          "command": "extension.openMeshPreview",
-          "group": "navigation"
-        }
-      ]
+      "explorer/context": [{
+        "when": "resourceLangId == 'obj'",
+        "command": "extension.openMeshPreview",
+        "group": "navigation"
+      }]
     },
-    "languages": [
-      {
-        "id": "obj",
-        "extensions": [
-          ".obj"
-        ],
-        "aliases": [
-          "OBJ"
-        ],
-        "mimetypes": [
-          "text/plain"
-        ],
-        "configuration": "./language-configuration.json"
-      }
-    ]
+    "languages": [{
+      "id": "obj",
+      "extensions": [
+        ".obj"
+      ],
+      "aliases": [
+        "OBJ"
+      ],
+      "mimetypes": [
+        "text/plain"
+      ],
+      "configuration": "./language-configuration.json"
+    }]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
